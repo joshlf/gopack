@@ -5,7 +5,6 @@
 package gopack
 
 import (
-	"fmt"
 	"reflect"
 	"runtime"
 	"sync"
@@ -33,29 +32,6 @@ func testPackUnpack(t *testing.T) {
 	if t1 != (typ{255}) {
 		t.Fatalf("Expected %v; got %v", typ{255}, t1)
 	}
-}
-
-func TestPackUnpackWrongLength(t *testing.T) {
-	// Do twice to test it once
-	// the type is already in cache
-	testPackUnpackWrongLength(t)
-	testPackUnpackWrongLength(t)
-}
-
-func testPackUnpackWrongLength(t *testing.T) {
-	type typ struct {
-		F1 uint8
-		F2 uint8 `gopack:"1"`
-	}
-
-	t1 := typ{255, 255}
-	bytes := []byte{}
-	testError(t, Error{fmt.Errorf("gopack: buffer too small (0; need 2)")}, func() {
-		Pack(bytes, t1)
-	})
-	testError(t, Error{fmt.Errorf("gopack: buffer too small (0; need 2)")}, func() {
-		Unpack(bytes, t1)
-	})
 }
 
 func BenchmarkLockContention(b *testing.B) {

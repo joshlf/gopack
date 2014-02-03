@@ -15,6 +15,62 @@ import (
 type packer func(b []byte, v reflect.Value)
 type unpacker func(b []byte, v reflect.Value)
 
+func makePackerWrapper(strct reflect.Type) packer {
+	p, bits := makePacker(0, strct)
+	bytes := int(bits) / 8
+	if bits%8 != 0 {
+		bytes++
+	}
+	if bytes < 8 {
+		// We need at least a full 64-bit word,
+		// so if we aren't going to get that from
+		// the user, we have to stack-allocate
+		// and then copy over
+		return func(b []byte, v reflect.Value) {
+			if len(b) < bytes {
+				panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
+			}
+			var buf [8]byte
+			p(buf[:], v)
+			copy(b, buf[:])
+		}
+	}
+	return func(b []byte, v reflect.Value) {
+		if len(b) < bytes {
+			panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
+		}
+		p(b, v)
+	}
+}
+
+func makeUnpackerWrapper(strct reflect.Type) unpacker {
+	u, bits := makeUnpacker(0, strct)
+	bytes := int(bits) / 8
+	if bits%8 != 0 {
+		bytes++
+	}
+	if bytes < 8 {
+		// We need at least a full 64-bit word,
+		// so if we aren't going to get that from
+		// the user, we have to stack-allocate
+		// and then copy over
+		return func(b []byte, v reflect.Value) {
+			if len(b) < bytes {
+				panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
+			}
+			var buf [8]byte
+			copy(buf[:], b)
+			u(buf[:], v)
+		}
+	}
+	return func(b []byte, v reflect.Value) {
+		if len(b) < bytes {
+			panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
+		}
+		u(b, v)
+	}
+}
+
 // Returns the number of bits packed
 func makePacker(lsb uint64, strct reflect.Type) (packer, uint64) {
 	ptrType := strct.Kind() == reflect.Ptr

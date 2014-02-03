@@ -6,7 +6,6 @@
 package gopack
 
 import (
-	"fmt"
 	"reflect"
 	"sync"
 )
@@ -17,24 +16,14 @@ type Error struct {
 	error
 }
 
-type packerHandler struct {
-	packer
-	len int
-}
-
-type unpackerHandler struct {
-	unpacker
-	len int
-}
-
 var packerCache struct {
 	sync.RWMutex
-	m map[reflect.Type]packerHandler
+	m map[reflect.Type]packer
 }
 
 var unpackerCache struct {
 	sync.RWMutex
-	m map[reflect.Type]unpackerHandler
+	m map[reflect.Type]unpacker
 }
 
 // Pack the fields of strct into b. Fields must be
@@ -81,29 +70,18 @@ func Pack(b []byte, strct interface{}) {
 	v := reflect.ValueOf(strct)
 	typ := v.Type()
 	packerCache.RLock()
-	handler, ok := packerCache.m[typ]
+	p, ok := packerCache.m[typ]
 	packerCache.RUnlock()
 	if ok {
-		if len(b) < handler.len {
-			panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), handler.len)})
-		}
-		handler.packer(b, v)
+		p(b, v)
 		return
 	}
 
-	var l uint64
-	handler.packer, l = makePacker(0, typ)
-	handler.len = int(l) / 8
-	if l%8 != 0 {
-		handler.len++
-	}
+	p = makePackerWrapper(typ)
 	packerCache.Lock()
-	packerCache.m[typ] = handler
+	packerCache.m[typ] = p
 	packerCache.Unlock()
-	if len(b) < handler.len {
-		panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), handler.len)})
-	}
-	handler.packer(b, v)
+	p(b, v)
 }
 
 // Unpack the data in b into the fields of strct.
@@ -122,32 +100,21 @@ func Unpack(b []byte, strct interface{}) {
 	v := reflect.ValueOf(strct)
 	typ := v.Type()
 	unpackerCache.RLock()
-	handler, ok := unpackerCache.m[typ]
+	u, ok := unpackerCache.m[typ]
 	unpackerCache.RUnlock()
 	if ok {
-		if len(b) < handler.len {
-			panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), handler.len)})
-		}
-		handler.unpacker(b, v)
+		u(b, v)
 		return
 	}
 
-	var l uint64
-	handler.unpacker, l = makeUnpacker(0, typ)
-	handler.len = int(l) / 8
-	if l%8 != 0 {
-		handler.len++
-	}
+	u = makeUnpackerWrapper(typ)
 	unpackerCache.Lock()
-	unpackerCache.m[typ] = handler
+	unpackerCache.m[typ] = u
 	unpackerCache.Unlock()
-	if len(b) < handler.len {
-		panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), handler.len)})
-	}
-	handler.unpacker(b, v)
+	u(b, v)
 }
 
 func init() {
-	packerCache.m = make(map[reflect.Type]packerHandler)
-	unpackerCache.m = make(map[reflect.Type]unpackerHandler)
+	packerCache.m = make(map[reflect.Type]packer)
+	unpackerCache.m = make(map[reflect.Type]unpacker)
 }
