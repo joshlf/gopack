@@ -206,7 +206,7 @@ func makeBoolSinglePacker(lsb uint8) packer {
 	firstByte := lsb / 8
 	lsb = lsb % 8
 	return func(b []byte, field reflect.Value) {
-		var val uint64 = 0
+		var val uint64
 		if field.Bool() {
 			val = 1
 		}
@@ -256,19 +256,19 @@ func getFieldWidth(field reflect.StructField) (uint64, error) {
 	str := field.Tag.Get("gopack")
 	if str == "" {
 		return bits, nil
-	} else {
-		n, err := strconv.Atoi(str)
-		if err != nil {
-			return 0, Error{fmt.Errorf("gopack: struct tag on field \"%v\": %v", field.Name, err)}
-		}
-		if n > int(bits) {
-			return 0, Error{fmt.Errorf("gopack: struct tag on field \"%v\" (type %v) too wide (%v)", field.Name, field.Type, n)}
-		}
-		if n < 1 {
-			return 0, Error{fmt.Errorf("gopack: struct tag on field \"%v\" too small (%v)", field.Name, n)}
-		}
-		return uint64(n), nil
 	}
+
+	n, err := strconv.Atoi(str)
+	if err != nil {
+		return 0, Error{fmt.Errorf("gopack: struct tag on field \"%v\": %v", field.Name, err)}
+	}
+	if n > int(bits) {
+		return 0, Error{fmt.Errorf("gopack: struct tag on field \"%v\" (type %v) too wide (%v)", field.Name, field.Type, n)}
+	}
+	if n < 1 {
+		return 0, Error{fmt.Errorf("gopack: struct tag on field \"%v\" too small (%v)", field.Name, n)}
+	}
+	return uint64(n), nil
 }
 
 func isExported(field reflect.StructField) bool {
