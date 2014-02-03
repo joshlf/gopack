@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package gopack provides utilities for performing bit packing.
-//
-// For all of the functions provided by this package, if the values
-// provided for packing don't fit into the specified number of bits,
-// the behavior of this package is undefined.
 package gopack
 
 import (
@@ -14,7 +9,9 @@ import (
 )
 
 // Pack val into bits [lsb, lsb + width) in target,
-// returning the new value of target.
+// returning the new value of target. If val doesn't
+// fit in width bits, the behavior of PackUnsigned
+// is undefined.
 func PackUnsigned(target, val uint64, lsb, width uint8) uint64 {
 	// Zero out target region
 	msk := mask(width)
@@ -32,7 +29,9 @@ func UnpackUnsigned(target uint64, lsb, width uint8) uint64 {
 }
 
 // Pack val into bits [lsb, lsb + width) in target,
-// returning the new value of target.
+// returning the new value of target. If val doesn't
+// fit in width bits, the behavior of PackSigned is
+// undefined.
 func PackSigned(target uint64, val int64, lsb, width uint8) uint64 {
 	uval := *(*uint64)(unsafe.Pointer(&val))
 	// If val is negative, there will
@@ -53,23 +52,4 @@ func UnpackSigned(target uint64, lsb, width uint8) int64 {
 	// of the target range.
 	target |= (fillFirstBit((target>>(width-1))&1) & ^msk)
 	return *(*int64)(unsafe.Pointer(&target))
-}
-
-// If the lsb of u is 1, return all 1's,
-// otherwise return all 0's
-func fillFirstBit(u uint64) uint64 {
-	u |= u << 1
-	u |= u << 2
-	u |= u << 4
-	u |= u << 8
-	u |= u << 16
-	return u | (u << 32)
-}
-
-// Make a mask consisting of all 0's
-// followed by width 1's
-func mask(width uint8) uint64 {
-	msk := uint64(1)
-	msk <<= width
-	return msk - 1
 }
