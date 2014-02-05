@@ -7,6 +7,7 @@ package gopack
 import (
 	"math/rand"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -17,11 +18,7 @@ func TestUnsigned(t *testing.T) {
 
 	var u uint64
 	for i := 0; i < 1000*1000; i++ {
-		width := 1 + (rand.Uint32() & 0x3F) // Restrict to range [1, 64]
-		lsb := rand.Uint32() & 0x3F         // Restrict to range [0, 63]
-		if width+lsb > 64 {
-			continue
-		}
+		width, lsb := randWidthLSBPair()
 		val := (uint64(rand.Uint32()) | (uint64(rand.Uint32()) << 32)) & nOnes(int(width)) // Restrict to range [0, 2^width)
 		u = PackUnsigned(u, val, uint8(lsb), uint8(width))
 		val2 := UnpackUnsigned(u, uint8(lsb), uint8(width))
@@ -38,11 +35,10 @@ func TestSigned(t *testing.T) {
 
 	var u uint64
 	for i := 0; i < 1000*1000; i++ {
-		width := 1 + (rand.Uint32() & 0x3F) // Restrict to range [1, 64]
-		lsb := rand.Uint32() & 0x3F         // Restrict to range [0, 63]
+		width, lsb := randWidthLSBPair()
 		// Restrict width to [2, 63] because of
 		// restrictions imposed by rand.Int63n
-		if width+lsb > 64 || width == 1 || width == 64 {
+		if width == 1 || width == 64 {
 			continue
 		}
 
@@ -78,10 +74,48 @@ func TestSigned(t *testing.T) {
 	}
 }
 
-func nOnes(n int) uint64 {
+func BenchmarkPackUnsigned(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	width, lsb := randWidthLSBPair()
+	val := randUint64()
 	var u uint64
-	for i := 0; i < n; i++ {
-		u = (u << 1) | 1
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		PackUnsigned(u, val, lsb, width)
 	}
-	return u
+}
+
+func BenchmarkUnpackUnsigned(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	width, lsb := randWidthLSBPair()
+	u := randUint64()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		UnpackUnsigned(u, lsb, width)
+	}
+}
+
+func BenchmarkPackSigned(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	width, lsb := randWidthLSBPair()
+	val := randInt64()
+	var u uint64
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		PackSigned(u, val, lsb, width)
+	}
+}
+
+func BenchmarkUnpackSigned(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	width, lsb := randWidthLSBPair()
+	u := randUint64()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		UnpackSigned(u, lsb, width)
+	}
 }

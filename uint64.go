@@ -14,7 +14,7 @@ import (
 // is undefined.
 func PackUnsigned(target, val uint64, lsb, width uint8) uint64 {
 	// Zero out target region
-	msk := mask(width)
+	msk := (uint64(1) << width) - 1
 	msk <<= lsb
 	msk = ^msk
 	target &= msk
@@ -25,7 +25,7 @@ func PackUnsigned(target, val uint64, lsb, width uint8) uint64 {
 
 // Unpack the value stored in [lsb, lsb + width) in target.
 func UnpackUnsigned(target uint64, lsb, width uint8) uint64 {
-	return (target >> lsb) & mask(width)
+	return (target >> lsb) & ((uint64(1) << width) - 1)
 }
 
 // Pack val into bits [lsb, lsb + width) in target,
@@ -36,20 +36,20 @@ func PackSigned(target uint64, val int64, lsb, width uint8) uint64 {
 	uval := *(*uint64)(unsafe.Pointer(&val))
 	// If val is negative, there will
 	// be 1's outside of the target range.
-	uval &= mask(width)
-	return PackUnsigned(target, uval, lsb, width)
+	msk := (uint64(1) << width) - 1
+	uval &= msk
+
+	msk <<= lsb
+	msk = ^msk
+	target &= msk
+
+	uval <<= lsb
+	return target | uval
 }
 
 // Unpack the value stored in [lsb, lsb + width) in target.
 func UnpackSigned(target uint64, lsb, width uint8) int64 {
-	target >>= lsb
-	msk := mask(width)
-	target &= msk
-
-	// The return value of fillFirstBit
-	// should be either all 0s or all 1s
-	// depending on the value of the msb
-	// of the target range.
-	target |= (fillFirstBit((target>>(width-1))&1) & ^msk)
-	return *(*int64)(unsafe.Pointer(&target))
+	uval := (target >> lsb) & ((uint64(1) << width) - 1)
+	val := *(*int64)(unsafe.Pointer(&uval))
+	return (val << (64 - width)) >> (64 - width)
 }

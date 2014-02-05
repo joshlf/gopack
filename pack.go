@@ -42,7 +42,6 @@ func packInt64(b []byte, val int64, lsb, width uint8) {
 
 func unpackInt64(b []byte, lsb, width uint8) int64 {
 	uval := unpackUint64(b, lsb, width)
-	ones := fillFirstBit(uval >> (width - 1))
-	uval |= ones << width
-	return *(*int64)(unsafe.Pointer(&uval))
+	val := *(*int64)(unsafe.Pointer(&uval))
+	return (val << (64 - width)) >> (64 - width)
 }
