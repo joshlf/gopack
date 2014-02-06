@@ -55,8 +55,12 @@ var unpackerCache struct {
 // bool-typed fields always take up 1 bit, and any field
 // tags are ignored.
 //
-// If b is not sufficiently long to hold all of the
-// bits of strct, Pack will panic.
+// If there are bits in the last used byte of b which
+// are beyond the end of the packed data (for example,
+// the last four bits of the second byte when packing
+// 12 bits), those bits will be zeroed. If b is not
+// sufficiently long to hold all of the bits of strct,
+// Pack will panic.
 //
 // Fields which are not exported are ignored, and
 // take up no space in the packing.

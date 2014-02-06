@@ -8,6 +8,7 @@ import (
 	"fmt"
 	gopack_testing "github.com/joshlf13/gopack/testing"
 	"math"
+	"math/rand"
 	"reflect"
 	"testing"
 )
@@ -39,6 +40,251 @@ func TestMakeUnpacker(t *testing.T) {
 	u(b, reflect.ValueOf(&val).Elem())
 	if (val != typ{127}) {
 		t.Fatalf("Expected %v; got %v", typ{127}, val)
+	}
+}
+
+func TestMultipleFields(t *testing.T) {
+	type typ struct {
+		F1, F2 uint8
+	}
+
+	var b [2]byte
+	val := typ{127, 255}
+	p := makePackerWrapper(reflect.TypeOf(val))
+	p(b[:], reflect.ValueOf(val))
+	if b != [...]byte{127, 255} {
+		t.Fatalf("Expected %v; got %v", [...]byte{127, 255}, b)
+	}
+
+	val = typ{}
+	u := makeUnpackerWrapper(reflect.TypeOf(val))
+	u(b[:], reflect.ValueOf(&val).Elem())
+	if val != (typ{127, 255}) {
+		t.Fatalf("Expected %v; got %v", typ{127, 255}, val)
+	}
+}
+
+func TestCoverUnsigned(t *testing.T) {
+	testCover(t, struct{ F1 uint8 }{})
+	testCover(t, struct {
+		F1 uint8 `gopack:"4"`
+	}{})
+
+	testCover(t, struct {
+		F1 uint16
+	}{})
+	testCover(t, struct {
+		F1 bool
+		F2 uint16 `gopack:"15"`
+	}{})
+
+	testCover(t, struct {
+		F1 uint32 `gopack:"24"`
+	}{})
+	testCover(t, struct {
+		F1 uint8 `gopack:"7"`
+		F2 uint16
+	}{})
+
+	testCover(t, struct {
+		F1 uint32 `gopack:"32"`
+	}{})
+	testCover(t, struct {
+		F1 bool
+		F2 uint32 `gopack:"31"`
+	}{})
+
+	testCover(t, struct {
+		F1 uint64 `gopack:"40"`
+	}{})
+	testCover(t, struct {
+		F1 uint8  `gopack:"7"`
+		F2 uint32 `gopack:"32"`
+	}{})
+
+	testCover(t, struct {
+		F1 uint64 `gopack:"48"`
+	}{})
+
+	testCover(t, struct {
+		F1 uint64
+	}{})
+
+	testCover(t, struct {
+		F1 bool
+		F2 uint64 `gopack:"63"`
+	}{})
+
+	testCover(t, struct {
+		F1 uint8  `gopack:"7"`
+		F2 uint64 `gopack:"63"`
+	}{})
+
+	testCover(t, struct {
+		F1 uint8 `gopack:"7"`
+		F2 uint64
+	}{})
+}
+
+func TestCoverSigned(t *testing.T) {
+	rand.Seed(18140)
+	testCover(t, struct{ F1 int8 }{})
+	testCover(t, struct {
+		F1 int8 `gopack:"4"`
+	}{})
+
+	testCover(t, struct {
+		F1 int16
+	}{})
+	testCover(t, struct {
+		F1 bool
+		F2 int16 `gopack:"15"`
+	}{})
+
+	testCover(t, struct {
+		F1 int32 `gopack:"24"`
+	}{})
+	testCover(t, struct {
+		F1 int8 `gopack:"7"`
+		F2 int16
+	}{})
+
+	testCover(t, struct {
+		F1 int32 `gopack:"32"`
+	}{})
+	testCover(t, struct {
+		F1 bool
+		F2 int32 `gopack:"31"`
+	}{})
+
+	testCover(t, struct {
+		F1 int64 `gopack:"40"`
+	}{})
+	testCover(t, struct {
+		F1 int8  `gopack:"7"`
+		F2 int32 `gopack:"32"`
+	}{})
+
+	testCover(t, struct {
+		F1 int64 `gopack:"48"`
+	}{})
+
+	testCover(t, struct {
+		F1 int64
+	}{})
+
+	testCover(t, struct {
+		F1 bool
+		F2 int64 `gopack:"63"`
+	}{})
+
+	testCover(t, struct {
+		F1 int8  `gopack:"7"`
+		F2 int64 `gopack:"63"`
+	}{})
+
+	testCover(t, struct {
+		F1 int8 `gopack:"7"`
+		F2 int64
+	}{})
+}
+
+func testCover(t *testing.T, v interface{}) {
+	typ := reflect.TypeOf(v)
+	p := makePackerWrapper(typ)
+	u := makeUnpackerWrapper(reflect.PtrTo(typ))
+	_, n := makePacker(0, typ)
+	b := make([]byte, (int(n)/8)+1)
+
+	// Note: increasing the iterations to 1000*1000
+	// will cause the full test suite to take ~30s
+	for i := 0; i < 1000*100; i++ {
+		val1 := randInstance(typ)
+		val2 := reflect.New(typ)
+		p(b, val1)
+		u(b, val2)
+		if val2.Elem().Interface() != val1.Interface() {
+			t.Fatalf("Expected \n%v; got \n%v\n(on type %v)", val1.Interface(), val2.Elem().Interface(), typ)
+		}
+	}
+
+}
+
+func randInstance(typ reflect.Type) reflect.Value {
+	val := reflect.New(typ).Elem()
+	for i := 0; i < typ.NumField(); i++ {
+		switch typ.Field(i).Type.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			n, _ := getFieldWidth(typ.Field(i))
+			val.Field(i).SetInt(randInt64Bits(uint8(n)))
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			n, _ := getFieldWidth(typ.Field(i))
+			val.Field(i).SetUint(randUint64Bits(uint8(n)))
+		case reflect.Bool:
+			val.Field(i).SetBool(randBool())
+		}
+	}
+	return val
+}
+
+func TestByteBoundaries(t *testing.T) {
+	rand.Seed(235)
+	type typ struct {
+		F1 uint8 `gopack:"1"`
+		F2 uint8 `gopack:"5"`
+		F3 uint8 `gopack:"2"` // Reallign
+
+		F4 uint16 `gopack:"3"`
+		F5 uint16 `gopack:"9"`
+		F6 uint8  `gopack:"4"` // Reallign
+
+		F7 uint32 `gopack:"5"`
+		F8 uint32 `gopack:"18"`
+		F9 uint32 `gopack:"1"` // Reallign
+
+		F10 uint64 `gopack:"3"`
+		F11 uint64 `gopack:"35"`
+		F12 uint64 `gopack:"2"` // Reallign
+
+		F13 uint64 `gopack:"3"`
+		F14 uint64 `gopack:"43"`
+		F15 uint64 `gopack:"2"` // Reallign
+
+		F16 uint64 `gopack:"3"`
+		F17 uint64 `gopack:"63"`
+	}
+
+	val := typ{}
+	p := makePackerWrapper(reflect.TypeOf(val))
+	u := makeUnpackerWrapper(reflect.TypeOf(&val))
+	var b [32]byte
+
+	for i := 0; i < 1000*1000; i++ {
+		val = typ{
+			uint8(randUint64Bits(1)),
+			uint8(randUint64Bits(5)),
+			uint8(randUint64Bits(2)),
+			uint16(randUint64Bits(3)),
+			uint16(randUint64Bits(9)),
+			uint8(randUint64Bits(4)),
+			uint32(randUint64Bits(5)),
+			uint32(randUint64Bits(18)),
+			uint32(randUint64Bits(1)),
+			randUint64Bits(3),
+			randUint64Bits(35),
+			randUint64Bits(2),
+			randUint64Bits(3),
+			randUint64Bits(43),
+			randUint64Bits(2),
+			randUint64Bits(3),
+			randUint64Bits(63),
+		}
+		val2 := typ{}
+		p(b[:], reflect.ValueOf(val))
+		u(b[:], reflect.ValueOf(&val2))
+		if val2 != val {
+			t.Fatalf("Expected \n%v; got \n%v", val, val2)
+		}
 	}
 }
 
@@ -384,238 +630,4 @@ func testError(t *testing.T, err interface{}, f func()) {
 		}
 	}()
 	f()
-}
-
-func BenchmarkMakeEmptyPacker(b *testing.B) {
-	type typ struct {
-	}
-
-	t := reflect.TypeOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
-	}
-}
-
-func BenchmarkMakePacker1Field(b *testing.B) {
-	type typ struct {
-		F1 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
-	}
-}
-
-func BenchmarkMakePacker2Fields(b *testing.B) {
-	type typ struct {
-		F1, F2 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
-	}
-}
-
-func BenchmarkMakePacker4Fields(b *testing.B) {
-	type typ struct {
-		F1, F2, F3, F4 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
-	}
-}
-
-func BenchmarkMakePacker8Fields(b *testing.B) {
-	type typ struct {
-		F1, F2, F3, F4, F5, F6, F7, F8 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
-	}
-}
-
-func BenchmarkUseEmptyPacker(b *testing.B) {
-	type typ struct {
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 0)
-	val := reflect.ValueOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
-}
-
-func BenchmarkUsePacker1Field(b *testing.B) {
-	type typ struct {
-		F1 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 1)
-	val := reflect.ValueOf(&typ{}).Elem()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
-}
-
-func BenchmarkUsePacker2Fields(b *testing.B) {
-	type typ struct {
-		F1, F2 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 2)
-	val := reflect.ValueOf(&typ{}).Elem()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
-}
-
-func BenchmarkUsePacker4Fields(b *testing.B) {
-	type typ struct {
-		F1, F2, F3, F4 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 4)
-	val := reflect.ValueOf(&typ{}).Elem()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
-}
-
-func BenchmarkUsePacker8Fields(b *testing.B) {
-	type typ struct {
-		F1, F2, F3, F4, F5, F6, F7, F8 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 8)
-	val := reflect.ValueOf(&typ{}).Elem()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
-}
-
-func BenchmarkUsePacker8FieldsSigned(b *testing.B) {
-	type typ struct {
-		F1, F2, F3, F4, F5, F6, F7, F8 int8
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 8)
-	val := reflect.ValueOf(&typ{}).Elem()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
-}
-
-func BenchmarkNested1Level(b *testing.B) {
-	type typ struct {
-		F1 struct {
-		}
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 0)
-	val := reflect.ValueOf(&typ{}).Elem()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
-}
-
-func BenchmarkNested2Levels(b *testing.B) {
-	type typ struct {
-		F1 struct {
-			F2 struct {
-			}
-		}
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 0)
-	val := reflect.ValueOf(&typ{}).Elem()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
-}
-
-func BenchmarkNested4Levels(b *testing.B) {
-	type typ struct {
-		F1 struct {
-			F2 struct {
-				F3 struct {
-					F4 struct {
-					}
-				}
-			}
-		}
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 0)
-	val := reflect.ValueOf(&typ{}).Elem()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
-}
-
-func BenchmarkNested8Levels(b *testing.B) {
-	type typ struct {
-		F1 struct {
-			F2 struct {
-				F3 struct {
-					F4 struct {
-						F5 struct {
-							F6 struct {
-								F7 struct {
-									F8 struct {
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
-	bytes := make([]byte, 0)
-	val := reflect.ValueOf(&typ{}).Elem()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p(bytes, val)
-	}
 }

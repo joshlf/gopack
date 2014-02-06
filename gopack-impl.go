@@ -6,10 +6,8 @@ package gopack
 
 import (
 	"fmt"
-	"math"
 	"reflect"
 	"strconv"
-	"unsafe"
 )
 
 type packer func(b []byte, v reflect.Value)
@@ -21,23 +19,12 @@ func makePackerWrapper(strct reflect.Type) packer {
 	if bits%8 != 0 {
 		bytes++
 	}
-	if bytes < 8 {
-		// We need at least a full 64-bit word,
-		// so if we aren't going to get that from
-		// the user, we have to stack-allocate
-		// and then copy over
-		return func(b []byte, v reflect.Value) {
-			if len(b) < bytes {
-				panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
-			}
-			var buf [8]byte
-			p(buf[:], v)
-			copy(b, buf[:])
-		}
-	}
 	return func(b []byte, v reflect.Value) {
 		if len(b) < bytes {
 			panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
+		}
+		for i := 0; i < bytes; i++ {
+			b[i] = 0
 		}
 		p(b, v)
 	}
@@ -48,20 +35,6 @@ func makeUnpackerWrapper(strct reflect.Type) unpacker {
 	bytes := int(bits) / 8
 	if bits%8 != 0 {
 		bytes++
-	}
-	if bytes < 8 {
-		// We need at least a full 64-bit word,
-		// so if we aren't going to get that from
-		// the user, we have to stack-allocate
-		// and then copy over
-		return func(b []byte, v reflect.Value) {
-			if len(b) < bytes {
-				panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
-			}
-			var buf [8]byte
-			copy(buf[:], b)
-			u(buf[:], v)
-		}
 	}
 	return func(b []byte, v reflect.Value) {
 		if len(b) < bytes {
@@ -94,10 +67,7 @@ func makePacker(lsb uint64, strct reflect.Type) (packer, uint64) {
 			packers = append(packers, noOpPacker)
 		}
 	}
-	if ptrType {
-		return makeDereferencePacker(makeCallAllPackers(packers)), bitsPacked
-	}
-	return makeCallAllPackers(packers), bitsPacked
+	return makeCallAllPackers(packers, ptrType), bitsPacked
 }
 
 // Returns the number of bits packed
@@ -108,13 +78,13 @@ func makeFieldPacker(lsb uint64, field reflect.StructField) (packer, uint64) {
 		if err != nil {
 			return makePanicPacker(err), 0
 		}
-		return makeSignedSinglePacker(uint8(lsb), uint8(bits)), bits
+		return makeSignedSinglePacker(field.Type, uint8(lsb), uint8(bits)), bits
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		bits, err := getFieldWidth(field)
 		if err != nil {
 			return makePanicPacker(err), 0
 		}
-		return makeUnsignedSinglePacker(uint8(lsb), uint8(bits)), bits
+		return makeUnsignedSinglePacker(field.Type, uint8(lsb), uint8(bits)), bits
 	case reflect.Bool:
 		return makeBoolSinglePacker(uint8(lsb)), 1
 	case reflect.Struct:
@@ -124,17 +94,20 @@ func makeFieldPacker(lsb uint64, field reflect.StructField) (packer, uint64) {
 	}
 }
 
-func makeCallAllPackers(p []packer) packer {
-	return func(b []byte, v reflect.Value) {
-		for i, f := range p {
-			f(b, v.Field(i))
+func makeCallAllPackers(p []packer, ptrType bool) packer {
+	if ptrType {
+		return func(b []byte, v reflect.Value) {
+			v = v.Elem()
+			for i, f := range p {
+				f(b, v.Field(i))
+			}
 		}
-	}
-}
-
-func makeDereferencePacker(p packer) packer {
-	return func(b []byte, v reflect.Value) {
-		p(b, v.Elem())
+	} else {
+		return func(b []byte, v reflect.Value) {
+			for i, f := range p {
+				f(b, v.Field(i))
+			}
+		}
 	}
 }
 
@@ -163,10 +136,7 @@ func makeUnpacker(lsb uint64, strct reflect.Type) (unpacker, uint64) {
 			unpackers = append(unpackers, noOpUnpacker)
 		}
 	}
-	if ptrType {
-		return makeDereferenceUnpacker(makeCallAllUnpackers(unpackers)), bitsUnpacked
-	}
-	return makeCallAllUnpackers(unpackers), bitsUnpacked
+	return makeCallAllUnpackers(unpackers, ptrType), bitsUnpacked
 }
 
 // Returns the number of bits unpacked
@@ -177,13 +147,13 @@ func makeFieldUnpacker(lsb uint64, field reflect.StructField) (unpacker, uint64)
 		if err != nil {
 			return makePanicUnpacker(err), 0
 		}
-		return makeSignedSingleUnpacker(uint8(lsb), uint8(bits)), bits
+		return makeSignedSingleUnpacker(field.Type, uint8(lsb), uint8(bits)), bits
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		bits, err := getFieldWidth(field)
 		if err != nil {
 			return makePanicUnpacker(err), 0
 		}
-		return makeUnsignedSingleUnpacker(uint8(lsb), uint8(bits)), bits
+		return makeUnsignedSingleUnpacker(field.Type, uint8(lsb), uint8(bits)), bits
 	case reflect.Bool:
 		return makeBoolSingleUnpacker(uint8(lsb)), 1
 	case reflect.Struct:
@@ -193,106 +163,24 @@ func makeFieldUnpacker(lsb uint64, field reflect.StructField) (unpacker, uint64)
 	}
 }
 
-func makeCallAllUnpackers(u []unpacker) unpacker {
-	return func(b []byte, v reflect.Value) {
-		for i, f := range u {
-			f(b, v.Field(i))
+func makeCallAllUnpackers(u []unpacker, ptrType bool) unpacker {
+	if ptrType {
+		return func(b []byte, v reflect.Value) {
+			v = v.Elem()
+			for i, f := range u {
+				f(b, v.Field(i))
+			}
 		}
-	}
-}
-
-func makeDereferenceUnpacker(u unpacker) unpacker {
-	return func(b []byte, v reflect.Value) {
-		u(b, v.Elem())
+	} else {
+		return func(b []byte, v reflect.Value) {
+			for i, f := range u {
+				f(b, v.Field(i))
+			}
+		}
 	}
 }
 
 func noOpUnpacker(b []byte, v reflect.Value) {}
-
-/*
-	Single packers and unpackers
-	pack and unpack a single field
-*/
-
-func makeUnsignedSinglePacker(lsb, width uint8) packer {
-	firstByte := lsb / 8
-	lsb = lsb % 8
-	if width < 64 {
-		maxVal := (uint64(1) << width) - 1
-		return func(b []byte, field reflect.Value) {
-			u := field.Uint()
-			if u > maxVal {
-				panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
-			}
-			packUint64(b[firstByte:], u, lsb, width)
-		}
-	}
-	return func(b []byte, field reflect.Value) {
-		packUint64(b[firstByte:], field.Uint(), lsb, width)
-	}
-}
-
-func makeSignedSinglePacker(lsb, width uint8) packer {
-	firstByte := lsb / 8
-	lsb = lsb % 8
-	if width < 64 {
-		minVal := int64(-1) << (width - 1)
-		var maxVal int64
-		// Place maxUval in a separate scope
-		// to prevent the returned closure from
-		// unnecessarily closing over it.
-		{
-			maxUval := uint64(math.MaxUint64) >> (65 - width)
-			maxVal = *(*int64)(unsafe.Pointer(&maxUval))
-		}
-		return func(b []byte, field reflect.Value) {
-			i := field.Int()
-			if i < minVal || i > maxVal {
-				panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, i)})
-			}
-			packInt64(b[firstByte:], i, lsb, width)
-		}
-	}
-	return func(b []byte, field reflect.Value) {
-		packInt64(b[firstByte:], field.Int(), lsb, width)
-	}
-}
-
-func makeBoolSinglePacker(lsb uint8) packer {
-	firstByte := lsb / 8
-	lsb = lsb % 8
-	return func(b []byte, field reflect.Value) {
-		var val uint64
-		if field.Bool() {
-			val = 1
-		}
-		packUint64(b[firstByte:], val, lsb, 1)
-	}
-}
-
-func makeUnsignedSingleUnpacker(lsb, width uint8) unpacker {
-	firstByte := lsb / 8
-	lsb = lsb % 8
-	return func(b []byte, field reflect.Value) {
-		field.SetUint(unpackUint64(b[firstByte:], lsb, width))
-	}
-}
-
-func makeSignedSingleUnpacker(lsb, width uint8) unpacker {
-	firstByte := lsb / 8
-	lsb = lsb % 8
-	return func(b []byte, field reflect.Value) {
-		field.SetInt(unpackInt64(b[firstByte:], lsb, width))
-	}
-}
-
-func makeBoolSingleUnpacker(lsb uint8) unpacker {
-	firstByte := lsb / 8
-	lsb = lsb % 8
-	return func(b []byte, field reflect.Value) {
-		field.SetBool(unpackUint64(b[firstByte:], lsb, 1) == 1)
-	}
-}
 
 func makePanicPacker(err error) packer {
 	return func(b []byte, v reflect.Value) {
