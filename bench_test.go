@@ -155,7 +155,7 @@ func BenchmarkPackBackend1Field(b *testing.B) {
 
 	t := typ{}
 	bytes := []byte{0}
-	p, _ := makePacker(0, reflect.TypeOf(t))
+	p, _, _ := makePacker(0, reflect.TypeOf(t))
 	v := reflect.ValueOf(t)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -184,7 +184,7 @@ func BenchmarkPackBackend2Fields(b *testing.B) {
 
 	t := typ{}
 	bytes := []byte{0, 0}
-	p, _ := makePacker(0, reflect.TypeOf(t))
+	p, _, _ := makePacker(0, reflect.TypeOf(t))
 	v := reflect.ValueOf(t)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -213,7 +213,7 @@ func BenchmarkPackBackend4Fields(b *testing.B) {
 
 	t := typ{}
 	bytes := []byte{0, 0, 0, 0}
-	p, _ := makePacker(0, reflect.TypeOf(t))
+	p, _, _ := makePacker(0, reflect.TypeOf(t))
 	v := reflect.ValueOf(t)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -242,7 +242,7 @@ func BenchmarkPackBackend8Fields(b *testing.B) {
 
 	t := typ{}
 	bytes := []byte{0, 0, 0, 0, 0, 0, 0, 0}
-	p, _ := makePacker(0, reflect.TypeOf(t))
+	p, _, _ := makePacker(0, reflect.TypeOf(t))
 	v := reflect.ValueOf(t)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

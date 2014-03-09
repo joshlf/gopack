@@ -6,11 +6,12 @@ package gopack
 
 import (
 	"fmt"
-	gopack_testing "github.com/joshlf13/gopack/testing"
 	"math"
 	"math/rand"
 	"reflect"
 	"testing"
+
+	gopack_testing "github.com/joshlf13/gopack/testing"
 )
 
 func TestMakePacker(t *testing.T) {
@@ -18,9 +19,8 @@ func TestMakePacker(t *testing.T) {
 		f1 uint8
 	}
 
-	p := makePackerWrapper(reflect.TypeOf(typ{}))
-	b := []byte{0}
-	p(b, reflect.ValueOf(typ{127}))
+	var b [1]byte
+	Pack(b[:], typ{127})
 
 	// Since typ.f1 isn't exported,
 	// it shouldn't be packed
@@ -36,10 +36,15 @@ func TestMakeUnpacker(t *testing.T) {
 
 	b := []byte{127}
 	val := typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(val))
-	u(b, reflect.ValueOf(&val).Elem())
+	Unpack(b, &val)
 	if (val != typ{127}) {
 		t.Fatalf("Expected %v; got %v", typ{127}, val)
+	}
+
+	val = typ{}
+	Unpack(b, val)
+	if val != (typ{}) {
+		t.Fatalf("Expected %v; got %v", typ{}, val)
 	}
 }
 
@@ -50,21 +55,20 @@ func TestMultipleFields(t *testing.T) {
 
 	var b [2]byte
 	val := typ{127, 255}
-	p := makePackerWrapper(reflect.TypeOf(val))
-	p(b[:], reflect.ValueOf(val))
+	Pack(b[:], val)
 	if b != [...]byte{127, 255} {
 		t.Fatalf("Expected %v; got %v", [...]byte{127, 255}, b)
 	}
 
 	val = typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(val))
-	u(b[:], reflect.ValueOf(&val).Elem())
+	Unpack(b[:], &val)
 	if val != (typ{127, 255}) {
 		t.Fatalf("Expected %v; got %v", typ{127, 255}, val)
 	}
 }
 
 func TestCoverUnsigned(t *testing.T) {
+	rand.Seed(20421)
 	testCover(t, struct{ F1 uint8 }{})
 	testCover(t, struct {
 		F1 uint8 `gopack:"4"`
@@ -193,7 +197,7 @@ func testCover(t *testing.T, v interface{}) {
 	typ := reflect.TypeOf(v)
 	p := makePackerWrapper(typ)
 	u := makeUnpackerWrapper(reflect.PtrTo(typ))
-	_, n := makePacker(0, typ)
+	_, n, _ := makePacker(0, typ)
 	b := make([]byte, (int(n)/8)+1)
 
 	// Note: increasing the iterations to 1000*1000
@@ -207,24 +211,6 @@ func testCover(t *testing.T, v interface{}) {
 			t.Fatalf("Expected \n%v; got \n%v\n(on type %v)", val1.Interface(), val2.Elem().Interface(), typ)
 		}
 	}
-
-}
-
-func randInstance(typ reflect.Type) reflect.Value {
-	val := reflect.New(typ).Elem()
-	for i := 0; i < typ.NumField(); i++ {
-		switch typ.Field(i).Type.Kind() {
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			n, _ := getFieldWidth(typ.Field(i))
-			val.Field(i).SetInt(randInt64Bits(uint8(n)))
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			n, _ := getFieldWidth(typ.Field(i))
-			val.Field(i).SetUint(randUint64Bits(uint8(n)))
-		case reflect.Bool:
-			val.Field(i).SetBool(randBool())
-		}
-	}
-	return val
 }
 
 func TestByteBoundaries(t *testing.T) {
@@ -299,15 +285,13 @@ func TestNesting(t *testing.T) {
 
 	var b [2]byte
 	val := typ{127, typ1{255}}
-	p := makePackerWrapper(reflect.TypeOf(val))
-	p(b[:], reflect.ValueOf(val))
+	Pack(b[:], val)
 	if b != [...]byte{127, 255} {
 		t.Fatalf("Expected %v; got %v", [...]byte{127, 255}, b)
 	}
 
 	val = typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(val))
-	u(b[:], reflect.ValueOf(&val).Elem())
+	Unpack(b[:], &val)
 	if val != (typ{127, typ1{255}}) {
 		t.Fatalf("Expected %v; got %v", typ{127, typ1{255}}, val)
 	}
@@ -321,15 +305,13 @@ func TestTags(t *testing.T) {
 
 	var b [2]byte
 	val := typ{21, 9}
-	p := makePackerWrapper(reflect.TypeOf(val))
-	p(b[:], reflect.ValueOf(val))
+	Pack(b[:], val)
 	if b != [...]byte{53, 1} {
 		t.Fatalf("Expected %v; got %v", [...]byte{53, 1}, b)
 	}
 
 	val = typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(val))
-	u(b[:], reflect.ValueOf(&val).Elem())
+	Unpack(b[:], &val)
 	if val != (typ{21, 9}) {
 		t.Fatalf("Expected %v; got %v", typ{21, 9}, val)
 	}
@@ -343,15 +325,13 @@ func TestBoolTag(t *testing.T) {
 
 	var b [1]byte
 	val := typ{false, true}
-	p := makePackerWrapper(reflect.TypeOf(val))
-	p(b[:], reflect.ValueOf(val))
+	Pack(b[:], val)
 	if b != [...]byte{2} {
 		t.Fatalf("Expected %v; got %v", [...]byte{2}, b)
 	}
 
 	val = typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(val))
-	u(b[:], reflect.ValueOf(&val).Elem())
+	Unpack(b[:], &val)
 	if val != (typ{false, true}) {
 		t.Fatalf("Expected %v; got %v", typ{false, true}, val)
 	}
@@ -360,15 +340,13 @@ func TestBoolTag(t *testing.T) {
 func TestUnexported(t *testing.T) {
 	var b [1]byte
 	val := gopack_testing.MakeTyp("hi", 255)
-	p := makePackerWrapper(reflect.TypeOf(val))
-	p(b[:], reflect.ValueOf(val))
+	Pack(b[:], val)
 	if b != [...]byte{255} {
 		t.Fatalf("Expected %v; got %v", [...]byte{255}, b)
 	}
 
 	val = gopack_testing.Typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(val))
-	u(b[:], reflect.ValueOf(&val).Elem())
+	Unpack(b[:], &val)
 	if val != gopack_testing.MakeTyp("", 255) {
 		t.Fatalf("Expected %v; got %v", gopack_testing.MakeTyp("", 255), val)
 	}
@@ -381,17 +359,21 @@ func TestPointer(t *testing.T) {
 
 	var b [1]byte
 	val := typ{255}
-	p := makePackerWrapper(reflect.TypeOf(&val))
-	p(b[:], reflect.ValueOf(&val))
+	Pack(b[:], &val)
 	if b != [...]byte{255} {
 		t.Fatalf("Expected %v; got %v", [...]byte{255}, b)
 	}
 
 	val = typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(&val))
-	u(b[:], reflect.ValueOf(&val))
+	Unpack(b[:], &val)
 	if val != (typ{255}) {
 		t.Fatalf("Expected %v; got %v", typ{255}, val)
+	}
+
+	val = typ{}
+	Unpack(b[:], val)
+	if val != (typ{}) {
+		t.Fatalf("Expected %v; got %v", typ{}, val)
 	}
 }
 
@@ -402,15 +384,13 @@ func TestSignedPacking(t *testing.T) {
 
 	var b [1]byte
 	val := typ{-1}
-	p := makePackerWrapper(reflect.TypeOf(&val))
-	p(b[:], reflect.ValueOf(&val))
+	Pack(b[:], val)
 	if b != [...]byte{255} {
 		t.Fatalf("Expected %v; got %v", [...]byte{255}, b)
 	}
 
 	val = typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(&val))
-	u(b[:], reflect.ValueOf(&val))
+	Unpack(b[:], &val)
 	if val != (typ{-1}) {
 		t.Fatalf("Expected %v; got %v", typ{-1}, val)
 	}
@@ -424,27 +404,25 @@ func TestBoolPacking(t *testing.T) {
 
 	var b [1]byte
 	val := typ{-1, false}
-	p := makePackerWrapper(reflect.TypeOf(&val))
-	p(b[:], reflect.ValueOf(&val))
+	Pack(b[:], val)
 	if b != [...]byte{127} {
 		t.Fatalf("Expected %v; got %v", [...]byte{127}, b)
 	}
 
 	val = typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(&val))
-	u(b[:], reflect.ValueOf(&val))
+	Unpack(b[:], &val)
 	if val != (typ{-1, false}) {
 		t.Fatalf("Expected %v; got %v", typ{-1, false}, val)
 	}
 
 	val = typ{-1, true}
-	p(b[:], reflect.ValueOf(&val))
+	Pack(b[:], val)
 	if b != [...]byte{255} {
 		t.Fatalf("Expected %v; got %v", [...]byte{255}, b)
 	}
 
 	val = typ{}
-	u(b[:], reflect.ValueOf(&val))
+	Unpack(b[:], &val)
 	if val != (typ{-1, true}) {
 		t.Fatalf("Expected %v; got %v", typ{-1, true}, val)
 	}
@@ -457,15 +435,13 @@ func Test64Bit(t *testing.T) {
 
 	var b [8]byte
 	val := typ{math.MaxUint64}
-	p := makePackerWrapper(reflect.TypeOf(&val))
-	p(b[:], reflect.ValueOf(&val))
+	Pack(b[:], &val)
 	if b != [...]byte{255, 255, 255, 255, 255, 255, 255, 255} {
 		t.Fatalf("Expected %v; got %v", [...]byte{255, 255, 255, 255, 255, 255, 255, 255}, b)
 	}
 
 	val = typ{}
-	u := makeUnpackerWrapper(reflect.TypeOf(&val))
-	u(b[:], reflect.ValueOf(&val))
+	Unpack(b[:], &val)
 	if val != (typ{math.MaxUint64}) {
 		t.Fatalf("Expected %v; got %v", typ{math.MaxUint64}, val)
 	}
@@ -475,15 +451,13 @@ func Test64Bit(t *testing.T) {
 	}
 
 	val2 := typ1{-1}
-	p = makePackerWrapper(reflect.TypeOf(&val2))
-	p(b[:], reflect.ValueOf(&val2))
+	Pack(b[:], &val2)
 	if b != [...]byte{255, 255, 255, 255, 255, 255, 255, 255} {
 		t.Fatalf("Expected %v; got %v", [...]byte{255, 255, 255, 255, 255, 255, 255, 255}, b)
 	}
 
 	val2 = typ1{}
-	u = makeUnpackerWrapper(reflect.TypeOf(&val2))
-	u(b[:], reflect.ValueOf(&val2))
+	Unpack(b[:], &val2)
 	if val2 != (typ1{-1}) {
 		t.Fatalf("Expected %v; got %v", typ1{-1}, val)
 	}
@@ -492,68 +466,56 @@ func Test64Bit(t *testing.T) {
 func TestErrors(t *testing.T) {
 	i := 0
 	testError(t, Error{fmt.Errorf("gopack: non-struct type int")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(i))
-		p(nil, reflect.Value{})
+		Pack(nil, 0)
 	})
 	testError(t, Error{fmt.Errorf("gopack: non-struct type int")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(&i))
-		p(nil, reflect.Value{})
+		Pack(nil, &i)
 	})
 	testError(t, Error{fmt.Errorf("gopack: non-struct type int")}, func() {
-		u := makeUnpackerWrapper(reflect.TypeOf(i))
-		u(nil, reflect.Value{})
+		Unpack(nil, i)
 	})
 	testError(t, Error{fmt.Errorf("gopack: non-struct type int")}, func() {
-		u := makeUnpackerWrapper(reflect.TypeOf(&i))
-		u(nil, reflect.Value{})
+		Pack(nil, i)
 	})
 
 	type typ struct {
 		F1 string
 	}
 	testError(t, Error{fmt.Errorf("gopack: non-packable type string")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(typ{}))
-		p(nil, reflect.ValueOf(typ{}))
+		Pack(nil, typ{})
 	})
 	testError(t, Error{fmt.Errorf("gopack: non-packable type string")}, func() {
-		u := makeUnpackerWrapper(reflect.TypeOf(typ{}))
-		u(nil, reflect.ValueOf(typ{}))
+		Unpack(nil, typ{})
 	})
 
 	type typ1 struct {
 		F1 uint8 `gopack:"numerals"`
 	}
 	testError(t, Error{fmt.Errorf("gopack: struct tag on field \"F1\": strconv.ParseInt: parsing \"numerals\": invalid syntax")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(typ1{}))
-		p(nil, reflect.ValueOf(typ1{}))
+		Pack(nil, typ1{})
 	})
 	testError(t, Error{fmt.Errorf("gopack: struct tag on field \"F1\": strconv.ParseInt: parsing \"numerals\": invalid syntax")}, func() {
-		u := makeUnpackerWrapper(reflect.TypeOf(typ1{}))
-		u(nil, reflect.ValueOf(typ1{}))
+		Unpack(nil, typ1{})
 	})
 
 	type typ2 struct {
 		F1 int8 `gopack:"9"`
 	}
 	testError(t, Error{fmt.Errorf("gopack: struct tag on field \"F1\" (type int8) too wide (9)")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(typ2{}))
-		p(nil, reflect.ValueOf(typ2{}))
+		Pack(nil, typ2{})
 	})
 	testError(t, Error{fmt.Errorf("gopack: struct tag on field \"F1\" (type int8) too wide (9)")}, func() {
-		u := makeUnpackerWrapper(reflect.TypeOf(typ2{}))
-		u(nil, reflect.ValueOf(typ2{}))
+		Unpack(nil, typ2{})
 	})
 
 	type typ3 struct {
 		F1 uint8 `gopack:"0"`
 	}
 	testError(t, Error{fmt.Errorf("gopack: struct tag on field \"F1\" too small (0)")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(typ3{}))
-		p(nil, reflect.ValueOf(typ3{}))
+		Pack(nil, typ3{})
 	})
 	testError(t, Error{fmt.Errorf("gopack: struct tag on field \"F1\" too small (0)")}, func() {
-		u := makeUnpackerWrapper(reflect.TypeOf(typ3{}))
-		u(nil, reflect.ValueOf(typ3{}))
+		Pack(nil, typ3{})
 	})
 
 	type typ4 struct {
@@ -561,18 +523,16 @@ func TestErrors(t *testing.T) {
 		F2 int8  `gopack:"4"`
 	}
 	testError(t, Error{fmt.Errorf("gopack: value out of range: max 15; got 16")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(typ4{}))
-		p(make([]byte, 1), reflect.ValueOf(typ4{15, 0}))
-		p(make([]byte, 1), reflect.ValueOf(typ4{16, 0}))
+		Pack(make([]byte, 1), typ4{15, 0})
+		Pack(make([]byte, 1), typ4{16, 0})
 	})
 	testError(t, Error{fmt.Errorf("gopack: value out of range: max 7, min -8; got 8")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(typ4{}))
-		p(make([]byte, 1), reflect.ValueOf(typ4{15, -8}))
-		p(make([]byte, 1), reflect.ValueOf(typ4{15, 8}))
+		Pack(make([]byte, 1), typ4{15, -8})
+		Pack(make([]byte, 1), typ4{15, 8})
 	})
 	testError(t, Error{fmt.Errorf("gopack: value out of range: max 7, min -8; got -9")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(typ4{}))
-		p(make([]byte, 1), reflect.ValueOf(typ4{15, -9}))
+		Pack(make([]byte, 1), typ4{15, -8})
+		Pack(make([]byte, 1), typ4{15, -9})
 	})
 
 	type typ5 struct {
@@ -582,12 +542,10 @@ func TestErrors(t *testing.T) {
 		F1 *typ5
 	}
 	testError(t, Error{fmt.Errorf("gopack: non-packable type *gopack.typ5")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(typ6{}))
-		p(nil, reflect.ValueOf(typ6{}))
+		Pack(nil, typ6{})
 	})
 	testError(t, Error{fmt.Errorf("gopack: non-packable type *gopack.typ5")}, func() {
-		u := makeUnpackerWrapper(reflect.TypeOf(typ6{}))
-		u(nil, reflect.ValueOf(typ6{}))
+		Unpack(nil, typ6{})
 	})
 
 	type typ7 struct {
@@ -598,12 +556,10 @@ func TestErrors(t *testing.T) {
 	t1 := typ7{255, 255}
 	bytes := []byte{}
 	testError(t, Error{fmt.Errorf("gopack: buffer too small (0; need 2)")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(t1))
-		p(bytes, reflect.ValueOf(t1))
+		Pack(bytes, t1)
 	})
 	testError(t, Error{fmt.Errorf("gopack: buffer too small (0; need 2)")}, func() {
-		u := makeUnpackerWrapper(reflect.TypeOf(&t1))
-		u(bytes, reflect.ValueOf(&t1))
+		Unpack(bytes, &t1)
 	})
 
 	type typ8 struct {
@@ -612,12 +568,22 @@ func TestErrors(t *testing.T) {
 
 	t2 := typ8{255, 255, 255, 255, 255, 255, 255, 255}
 	testError(t, Error{fmt.Errorf("gopack: buffer too small (0; need 8)")}, func() {
-		p := makePackerWrapper(reflect.TypeOf(t2))
-		p(bytes, reflect.ValueOf(t2))
+		Pack(bytes, t2)
 	})
 	testError(t, Error{fmt.Errorf("gopack: buffer too small (0; need 8)")}, func() {
-		u := makeUnpackerWrapper(reflect.TypeOf(&t2))
-		u(bytes, reflect.ValueOf(&t2))
+		Unpack(bytes, &t2)
+	})
+
+	// Make sure that Unpack reports errors
+	// even for non-pointer types
+	testError(t, Error{fmt.Errorf("gopack: non-struct type int")}, func() {
+		Unpack(nil, 0)
+	})
+	testError(t, Error{fmt.Errorf("gopack: non-packable type *uint8")}, func() {
+		type typ9 struct {
+			F1 *uint8
+		}
+		Unpack(nil, typ9{})
 	})
 }
 
@@ -625,7 +591,6 @@ func testError(t *testing.T, err interface{}, f func()) {
 	defer func() {
 		r := recover()
 		if r.(Error).Error() != err.(Error).Error() {
-
 			t.Fatalf("Expected error \"%v\"; got \"%v\"", err, r)
 		}
 	}()

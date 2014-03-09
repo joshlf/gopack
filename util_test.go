@@ -1,7 +1,9 @@
 package gopack
 
 import (
+	"fmt"
 	"math/rand"
+	"reflect"
 	"unsafe"
 )
 
@@ -43,4 +45,23 @@ func nOnes(n int) uint64 {
 		u = (u << 1) | 1
 	}
 	return u
+}
+
+func randInstance(typ reflect.Type) reflect.Value {
+	val := reflect.New(typ).Elem()
+	for i := 0; i < typ.NumField(); i++ {
+		switch typ.Field(i).Type.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			n, _ := getFieldWidth(typ.Field(i))
+			val.Field(i).SetInt(randInt64Bits(uint8(n)))
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			n, _ := getFieldWidth(typ.Field(i))
+			val.Field(i).SetUint(randUint64Bits(uint8(n)))
+		case reflect.Bool:
+			val.Field(i).SetBool(randBool())
+		default:
+			panic(fmt.Sprint("Cannot generate type:", typ.Field(i)))
+		}
+	}
+	return val
 }

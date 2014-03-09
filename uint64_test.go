@@ -19,7 +19,7 @@ func TestUnsigned(t *testing.T) {
 	var u uint64
 	for i := 0; i < 1000*1000; i++ {
 		width, lsb := randWidthLSBPair()
-		val := (uint64(rand.Uint32()) | (uint64(rand.Uint32()) << 32)) & nOnes(int(width)) // Restrict to range [0, 2^width)
+		val := randUint64() & nOnes(int(width)) // Restrict to range [0, 2^width)
 		u = PackUnsigned(u, val, uint8(lsb), uint8(width))
 		val2 := UnpackUnsigned(u, uint8(lsb), uint8(width))
 		if val2 != val {
@@ -63,8 +63,7 @@ func TestSigned(t *testing.T) {
 		}
 	}
 	for i := 0; i < 1000*1000; i++ {
-		// Test every possible value (this is a poor man's rand.Uint64)
-		uval := uint64(rand.Uint32()) | (uint64(rand.Uint32()) << 32)
+		uval := randUint64()
 		val := *(*int64)(unsafe.Pointer(&uval))
 		u = PackSigned(u, val, 0, 64)
 		val2 := UnpackSigned(u, 0, 64)

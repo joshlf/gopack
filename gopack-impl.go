@@ -14,7 +14,12 @@ type packer func(b []byte, v reflect.Value)
 type unpacker func(b []byte, v reflect.Value)
 
 func makePackerWrapper(strct reflect.Type) packer {
-	p, bits := makePacker(0, strct)
+	p, bits, err := makePacker(0, strct)
+	if err != nil {
+		return func(b []byte, v reflect.Value) {
+			panic(err)
+		}
+	}
 	bytes := int(bits) / 8
 	if bits%8 != 0 {
 		bytes++
@@ -31,7 +36,20 @@ func makePackerWrapper(strct reflect.Type) packer {
 }
 
 func makeUnpackerWrapper(strct reflect.Type) unpacker {
-	u, bits := makeUnpacker(0, strct)
+	u, bits, err := makeUnpacker(0, strct)
+	if err != nil {
+		return func(b []byte, v reflect.Value) {
+			panic(err)
+		}
+	}
+	// Check for non-pointers after
+	// checking for errors so that
+	// passing a non-pointer value
+	// with an invalid type panics
+	// (as opposed to being a no-op)
+	if strct.Kind() != reflect.Ptr {
+		return noOpUnpacker
+	}
 	bytes := int(bits) / 8
 	if bits%8 != 0 {
 		bytes++
@@ -45,13 +63,14 @@ func makeUnpackerWrapper(strct reflect.Type) unpacker {
 }
 
 // Returns the number of bits packed
-func makePacker(lsb uint64, strct reflect.Type) (packer, uint64) {
+// as the second return value
+func makePacker(lsb uint64, strct reflect.Type) (packer, uint64, error) {
 	ptrType := strct.Kind() == reflect.Ptr
 	if ptrType {
 		strct = strct.Elem()
 	}
 	if strct.Kind() != reflect.Struct {
-		return makePanicPacker(Error{fmt.Errorf("gopack: non-struct type %v", strct.String())}), 0
+		return nil, 0, Error{fmt.Errorf("gopack: non-struct type %v", strct.String())}
 	}
 	n := strct.NumField()
 	packers := make([]packer, 0)
@@ -59,7 +78,10 @@ func makePacker(lsb uint64, strct reflect.Type) (packer, uint64) {
 	for i := 0; i < n; i++ {
 		field := strct.Field(i)
 		if isExported(field) {
-			f, bits := makeFieldPacker(lsb, field)
+			f, bits, err := makeFieldPacker(lsb, field)
+			if err != nil {
+				return nil, 0, err
+			}
 			lsb += bits
 			bitsPacked += bits
 			packers = append(packers, f)
@@ -67,30 +89,31 @@ func makePacker(lsb uint64, strct reflect.Type) (packer, uint64) {
 			packers = append(packers, noOpPacker)
 		}
 	}
-	return makeCallAllPackers(packers, ptrType), bitsPacked
+	return makeCallAllPackers(packers, ptrType), bitsPacked, nil
 }
 
 // Returns the number of bits packed
-func makeFieldPacker(lsb uint64, field reflect.StructField) (packer, uint64) {
+// as the second return value
+func makeFieldPacker(lsb uint64, field reflect.StructField) (packer, uint64, error) {
 	switch field.Type.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		bits, err := getFieldWidth(field)
 		if err != nil {
-			return makePanicPacker(err), 0
+			return nil, 0, err
 		}
-		return makeSignedSinglePacker(field.Type, uint8(lsb), uint8(bits)), bits
+		return makeSignedSinglePacker(field.Type, uint8(lsb), uint8(bits)), bits, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		bits, err := getFieldWidth(field)
 		if err != nil {
-			return makePanicPacker(err), 0
+			return nil, 0, err
 		}
-		return makeUnsignedSinglePacker(field.Type, uint8(lsb), uint8(bits)), bits
+		return makeUnsignedSinglePacker(field.Type, uint8(lsb), uint8(bits)), bits, nil
 	case reflect.Bool:
-		return makeBoolSinglePacker(uint8(lsb)), 1
+		return makeBoolSinglePacker(uint8(lsb)), 1, nil
 	case reflect.Struct:
 		return makePacker(lsb, field.Type)
 	default:
-		return makePanicPacker(Error{fmt.Errorf("gopack: non-packable type %v", field.Type.String())}), 0
+		return nil, 0, Error{fmt.Errorf("gopack: non-packable type %v", field.Type.String())}
 	}
 }
 
@@ -113,14 +136,15 @@ func makeCallAllPackers(p []packer, ptrType bool) packer {
 
 func noOpPacker(b []byte, v reflect.Value) {}
 
-// Returns the number of bits packed
-func makeUnpacker(lsb uint64, strct reflect.Type) (unpacker, uint64) {
+// Returns the number of bits unpacked
+// as the second return value
+func makeUnpacker(lsb uint64, strct reflect.Type) (unpacker, uint64, error) {
 	ptrType := strct.Kind() == reflect.Ptr
 	if ptrType {
 		strct = strct.Elem()
 	}
 	if strct.Kind() != reflect.Struct {
-		return makePanicUnpacker(Error{fmt.Errorf("gopack: non-struct type %v", strct.String())}), 0
+		return nil, 0, Error{fmt.Errorf("gopack: non-struct type %v", strct.String())}
 	}
 	n := strct.NumField()
 	unpackers := make([]unpacker, 0)
@@ -128,7 +152,10 @@ func makeUnpacker(lsb uint64, strct reflect.Type) (unpacker, uint64) {
 	for i := 0; i < n; i++ {
 		field := strct.Field(i)
 		if isExported(field) {
-			f, bits := makeFieldUnpacker(lsb, field)
+			f, bits, err := makeFieldUnpacker(lsb, field)
+			if err != nil {
+				return nil, 0, err
+			}
 			lsb += bits
 			bitsUnpacked += bits
 			unpackers = append(unpackers, f)
@@ -136,30 +163,31 @@ func makeUnpacker(lsb uint64, strct reflect.Type) (unpacker, uint64) {
 			unpackers = append(unpackers, noOpUnpacker)
 		}
 	}
-	return makeCallAllUnpackers(unpackers, ptrType), bitsUnpacked
+	return makeCallAllUnpackers(unpackers, ptrType), bitsUnpacked, nil
 }
 
 // Returns the number of bits unpacked
-func makeFieldUnpacker(lsb uint64, field reflect.StructField) (unpacker, uint64) {
+// as the second return value
+func makeFieldUnpacker(lsb uint64, field reflect.StructField) (unpacker, uint64, error) {
 	switch field.Type.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		bits, err := getFieldWidth(field)
 		if err != nil {
-			return makePanicUnpacker(err), 0
+			return nil, 0, err
 		}
-		return makeSignedSingleUnpacker(field.Type, uint8(lsb), uint8(bits)), bits
+		return makeSignedSingleUnpacker(field.Type, uint8(lsb), uint8(bits)), bits, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		bits, err := getFieldWidth(field)
 		if err != nil {
-			return makePanicUnpacker(err), 0
+			return nil, 0, err
 		}
-		return makeUnsignedSingleUnpacker(field.Type, uint8(lsb), uint8(bits)), bits
+		return makeUnsignedSingleUnpacker(field.Type, uint8(lsb), uint8(bits)), bits, nil
 	case reflect.Bool:
-		return makeBoolSingleUnpacker(uint8(lsb)), 1
+		return makeBoolSingleUnpacker(uint8(lsb)), 1, nil
 	case reflect.Struct:
 		return makeUnpacker(lsb, field.Type)
 	default:
-		return makePanicUnpacker(Error{fmt.Errorf("gopack: non-packable type %v", field.Type.String())}), 0
+		return nil, 0, Error{fmt.Errorf("gopack: non-packable type %v", field.Type.String())}
 	}
 }
 
@@ -181,18 +209,6 @@ func makeCallAllUnpackers(u []unpacker, ptrType bool) unpacker {
 }
 
 func noOpUnpacker(b []byte, v reflect.Value) {}
-
-func makePanicPacker(err error) packer {
-	return func(b []byte, v reflect.Value) {
-		panic(err)
-	}
-}
-
-func makePanicUnpacker(err error) unpacker {
-	return func(b []byte, v reflect.Value) {
-		panic(err)
-	}
-}
 
 // Only call on uint and int types
 func getFieldWidth(field reflect.StructField) (uint64, error) {
