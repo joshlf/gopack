@@ -1,9 +1,10 @@
-package gopack
+package benchmark
 
 import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"strconv"
 	"unsafe"
 )
 
@@ -29,6 +30,16 @@ func randBool() bool {
 	return rand.Int()%2 == 0
 }
 
+func randByte() byte {
+	return byte(randUint64Bits(8))
+}
+
+func randBytes(b []byte) {
+	for i := range b {
+		b[i] = randByte()
+	}
+}
+
 func randWidthLSBPair() (uint8, uint8) {
 	width := uint8(1 + (rand.Uint32() & 0x3F)) // Restrict to range [1, 64]
 	lsb := uint8(rand.Uint32() & 0x3F)         // Restrict to range [0, 63]
@@ -39,42 +50,15 @@ func randWidthLSBPair() (uint8, uint8) {
 	return width, lsb
 }
 
-func nOnes(n int) uint64 {
-	var u uint64
-	for i := 0; i < n; i++ {
-		u = (u << 1) | 1
-	}
-	return u
-}
-
-// func randInstance(typ reflect.Type) reflect.Value {
-// 	val := reflect.New(typ).Elem()
-// 	for i := 0; i < typ.NumField(); i++ {
-// 		switch typ.Field(i).Type.Kind() {
-// 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-// 			n, _ := getFieldWidth(typ.Field(i))
-// 			val.Field(i).SetInt(randInt64Bits(uint8(n)))
-// 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-// 			n, _ := getFieldWidth(typ.Field(i))
-// 			val.Field(i).SetUint(randUint64Bits(uint8(n)))
-// 		case reflect.Bool:
-// 			val.Field(i).SetBool(randBool())
-// 		default:
-// 			panic(fmt.Sprint("Cannot generate type:", typ.Field(i).Type))
-// 		}
-// 	}
-// 	return val
-// }
-
 func randInstance(typ reflect.Type) reflect.Value {
 	val := reflect.New(typ).Elem()
 	for i := 0; i < typ.NumField(); i++ {
 		switch typ.Field(i).Type.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			n, _ := getFieldWidth(typ.Field(i))
+			n := getFieldWidth(typ.Field(i))
 			val.Field(i).SetInt(randInt64Bits(uint8(n)))
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			n, _ := getFieldWidth(typ.Field(i))
+			n := getFieldWidth(typ.Field(i))
 			val.Field(i).SetUint(randUint64Bits(uint8(n)))
 		case reflect.Bool:
 			val.Field(i).SetBool(randBool())
@@ -85,4 +69,13 @@ func randInstance(typ reflect.Type) reflect.Value {
 		}
 	}
 	return val
+}
+
+func getFieldWidth(field reflect.StructField) uint64 {
+	str := field.Tag.Get("gopack")
+	if str == "" {
+		return uint64(field.Type.Bits())
+	}
+	n, _ := strconv.Atoi(str)
+	return uint64(n)
 }
