@@ -4,7 +4,7 @@ Use of this source code is governed by a BSD-style
 license that can be found in the LICENSE fil
 -->
 
-gopack
+gopack [![Build Status](https://travis-ci.org/joshlf13/gopack.svg?branch=master)](https://travis-ci.org/joshlf13/gopack)
 ======
 
 Bitpacking for Go.
