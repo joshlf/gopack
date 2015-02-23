@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	gopack_testing "github.com/joshlf13/gopack/testing"
+	gopack_testing "github.com/synful/gopack/testing"
 )
 
 func TestMakePacker(t *testing.T) {
