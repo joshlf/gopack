@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joshlf13/gopack"
+	"github.com/synful/gopack"
 )
 
 /*

@@ -7,7 +7,7 @@ package benchmark
 import (
 	"testing"
 
-	"github.com/joshlf13/gopack"
+	"github.com/synful/gopack"
 )
 
 func BenchmarkPackNestingOverhead1Level(b *testing.B) {
