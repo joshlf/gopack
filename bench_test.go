@@ -11,6 +11,16 @@ import (
 	"testing"
 )
 
+func clearCaches() {
+	packerCache.Lock()
+	defer packerCache.Unlock()
+	unpackerCache.Lock()
+	defer unpackerCache.Unlock()
+
+	packerCache.m = make(map[reflect.Type]packer)
+	unpackerCache.m = make(map[reflect.Type]unpacker)
+}
+
 func BenchmarkBaseline(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 	}
@@ -24,6 +34,7 @@ func BenchmarkBool1Field(b *testing.B) {
 	p := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
 	val := reflect.ValueOf(typ{})
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p(bytes, val)
 	}
@@ -37,6 +48,7 @@ func BenchmarkBool2Fields(b *testing.B) {
 	p := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
 	val := reflect.ValueOf(typ{})
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p(bytes, val)
 	}
@@ -50,6 +62,7 @@ func BenchmarkBool4Fields(b *testing.B) {
 	p := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
 	val := reflect.ValueOf(typ{})
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p(bytes, val)
 	}
@@ -63,6 +76,7 @@ func BenchmarkBool8Fields(b *testing.B) {
 	p := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
 	val := reflect.ValueOf(typ{})
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p(bytes, val)
 	}
@@ -76,6 +90,7 @@ func BenchmarkBool9Fields(b *testing.B) {
 	p := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 2)
 	val := reflect.ValueOf(typ{})
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p(bytes, val)
 	}
@@ -89,12 +104,14 @@ func BenchmarkBool16Fields(b *testing.B) {
 	p := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 2)
 	val := reflect.ValueOf(typ{})
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p(bytes, val)
 	}
 }
 
 func BenchmarkLockContention(b *testing.B) {
+	clearCaches()
 	type typ struct {
 		F1 uint8
 	}
@@ -109,7 +126,7 @@ func BenchmarkLockContention(b *testing.B) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	runtime.GOMAXPROCS(2)
+	old := runtime.GOMAXPROCS(2)
 	b.ResetTimer()
 	go func(t typ, bytes []byte, b *testing.B) {
 		for i := 0; i < b.N; i += 2 {
@@ -121,16 +138,18 @@ func BenchmarkLockContention(b *testing.B) {
 		Pack(bytes1, t)
 	}
 	wg.Wait()
-	runtime.GOMAXPROCS(1)
+	runtime.GOMAXPROCS(old)
 }
 
 func BenchmarkNoLockContention(b *testing.B) {
+	clearCaches()
 	type typ struct {
 		F1 uint8
 	}
 
 	t := typ{}
 	bytes := []byte{0}
+	// Pre-compute handler
 	Pack(bytes, t)
 	b.ResetTimer()
 	for i := 0; i < b.N; i += 2 {

@@ -36,17 +36,15 @@ import (
 // (always a value; never a pointer), and the
 // length in bytes required to pack the type.
 // It registers packers and unpackers for the
-// type and its pointer type, and generates
-// and returns a random instance of the type
-// itself, and of a properly-lengthed byte slice.
+// type and generates and returns a random
+// instance of the type itself, and of a
+// properly-lengthed byte slice.
 func benchmarkUtil(example interface{}, numBytes int) (interface{}, []byte) {
 	rand.Seed(time.Now().UnixNano())
 	bytes := make([]byte, numBytes)
 
 	typ := reflect.TypeOf(example)
 	gopack.Pack(bytes, example)
-	gopack.Unpack(bytes, example)
-	gopack.Pack(bytes, reflect.New(typ).Interface())
 	gopack.Unpack(bytes, reflect.New(typ).Interface())
 
 	randBytes(bytes)
@@ -142,7 +140,7 @@ func BenchmarkUnpackBool2Fields(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gopack.Unpack(bytes, val)
+		gopack.Unpack(bytes, &val)
 	}
 }
 
@@ -155,7 +153,7 @@ func BenchmarkUnpackBool4Fields(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gopack.Unpack(bytes, val)
+		gopack.Unpack(bytes, &val)
 	}
 }
 
@@ -181,7 +179,7 @@ func BenchmarkUnpackBool16Fields(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gopack.Unpack(bytes, val)
+		gopack.Unpack(bytes, &val)
 	}
 }
 
