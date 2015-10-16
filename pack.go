@@ -11,9 +11,9 @@ import (
 	"unsafe"
 )
 
-func makeUnsignedSinglePacker(typ reflect.Type, lsb, width uint8) packer {
-	firstByte := lsb / 8
-	lsb = lsb % 8
+func makeUnsignedSinglePacker(typ reflect.Type, ilsb int, width uint8) packer {
+	firstByte := ilsb / 8
+	lsb := uint8(ilsb % 8)
 	canOverflow := width != uint8(typ.Bits())
 	maxVal := (uint64(1) << width) - 1
 	switch {
@@ -170,9 +170,9 @@ func makeUnsignedSinglePacker(typ reflect.Type, lsb, width uint8) packer {
 	}
 }
 
-func makeSignedSinglePacker(typ reflect.Type, lsb, width uint8) packer {
-	firstByte := lsb / 8
-	lsb = lsb % 8
+func makeSignedSinglePacker(typ reflect.Type, ilsb int, width uint8) packer {
+	firstByte := ilsb / 8
+	lsb := uint8(ilsb % 8)
 	canOverflow := width != uint8(typ.Bits())
 	minVal := int64(-1) << (width - 1)
 	maxUval := uint64(math.MaxUint64) >> (65 - width)
@@ -355,9 +355,9 @@ func makeSignedSinglePacker(typ reflect.Type, lsb, width uint8) packer {
 	}
 }
 
-func makeUnsignedSingleUnpacker(typ reflect.Type, lsb, width uint8) unpacker {
-	firstByte := lsb / 8
-	lsb = lsb % 8
+func makeUnsignedSingleUnpacker(typ reflect.Type, ilsb int, width uint8) unpacker {
+	firstByte := ilsb / 8
+	lsb := uint8(ilsb % 8)
 	switch {
 	case lsb+width <= 8:
 		shift1 := 8 - (lsb + width)
@@ -425,9 +425,9 @@ func makeUnsignedSingleUnpacker(typ reflect.Type, lsb, width uint8) unpacker {
 	}
 }
 
-func makeSignedSingleUnpacker(typ reflect.Type, lsb, width uint8) unpacker {
-	firstByte := lsb / 8
-	lsb = lsb % 8
+func makeSignedSingleUnpacker(typ reflect.Type, ilsb int, width uint8) unpacker {
+	firstByte := ilsb / 8
+	lsb := uint8(ilsb % 8)
 	switch {
 	case lsb+width <= 8:
 		shift1 := 64 - (lsb + width)
@@ -495,10 +495,9 @@ func makeSignedSingleUnpacker(typ reflect.Type, lsb, width uint8) unpacker {
 	}
 }
 
-func makeBoolSinglePacker(lsb uint8) packer {
+func makeBoolSinglePacker(lsb int) packer {
 	firstByte := lsb / 8
-	lsb = lsb % 8
-	tru := byte(1) << lsb
+	tru := byte(1) << uint8(lsb%8)
 	return func(b []byte, field reflect.Value) {
 		if field.Bool() {
 			b[firstByte] |= tru
@@ -506,10 +505,9 @@ func makeBoolSinglePacker(lsb uint8) packer {
 	}
 }
 
-func makeBoolSingleUnpacker(lsb uint8) unpacker {
+func makeBoolSingleUnpacker(lsb int) unpacker {
 	firstByte := lsb / 8
-	lsb = lsb % 8
-	tru := byte(1) << lsb
+	tru := byte(1) << uint8(lsb%8)
 	return func(b []byte, field reflect.Value) {
 		field.SetBool(b[firstByte]&tru > 0)
 	}

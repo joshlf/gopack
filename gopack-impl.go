@@ -101,15 +101,15 @@ func makeFieldPacker(lsb uint64, field reflect.StructField) (packer, uint64, err
 		if err != nil {
 			return nil, 0, err
 		}
-		return makeSignedSinglePacker(field.Type, uint8(lsb), uint8(bits)), bits, nil
+		return makeSignedSinglePacker(field.Type, int(lsb), uint8(bits)), bits, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		bits, err := getFieldWidth(field)
 		if err != nil {
 			return nil, 0, err
 		}
-		return makeUnsignedSinglePacker(field.Type, uint8(lsb), uint8(bits)), bits, nil
+		return makeUnsignedSinglePacker(field.Type, int(lsb), uint8(bits)), bits, nil
 	case reflect.Bool:
-		return makeBoolSinglePacker(uint8(lsb)), 1, nil
+		return makeBoolSinglePacker(int(lsb)), 1, nil
 	case reflect.Struct:
 		return makePacker(lsb, field.Type)
 	default:
@@ -175,15 +175,15 @@ func makeFieldUnpacker(lsb uint64, field reflect.StructField) (unpacker, uint64,
 		if err != nil {
 			return nil, 0, err
 		}
-		return makeSignedSingleUnpacker(field.Type, uint8(lsb), uint8(bits)), bits, nil
+		return makeSignedSingleUnpacker(field.Type, int(lsb), uint8(bits)), bits, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		bits, err := getFieldWidth(field)
 		if err != nil {
 			return nil, 0, err
 		}
-		return makeUnsignedSingleUnpacker(field.Type, uint8(lsb), uint8(bits)), bits, nil
+		return makeUnsignedSingleUnpacker(field.Type, int(lsb), uint8(bits)), bits, nil
 	case reflect.Bool:
-		return makeBoolSingleUnpacker(uint8(lsb)), 1, nil
+		return makeBoolSingleUnpacker(int(lsb)), 1, nil
 	case reflect.Struct:
 		return makeUnpacker(lsb, field.Type)
 	default:

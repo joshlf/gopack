@@ -4,7 +4,7 @@ Use of this source code is governed by a BSD-style
 license that can be found in the LICENSE file.
 -->
 
-gopack [![Build Status](https://travis-ci.org/joshlf13/gopack.svg?branch=master)](https://travis-ci.org/joshlf13/gopack)
+gopack [![Build Status](https://travis-ci.org/synful/gopack.svg?branch=master)](https://travis-ci.org/synful/gopack)
 ======
 
 Bitpacking for Go.
@@ -49,4 +49,4 @@ type fileHandle struct {
 
 ##Documentation
 
-See the [documentation](http://godoc.org/github.com/joshlf13/gopack).
+See the [documentation](http://godoc.org/github.com/synful/gopack).
