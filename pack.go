@@ -11,7 +11,7 @@ import (
 	"unsafe"
 )
 
-func makeUnsignedSinglePacker(typ reflect.Type, ilsb int, width uint8) packer {
+func makeUnsignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 	firstByte := ilsb / 8
 	lsb := uint8(ilsb % 8)
 	canOverflow := width != uint8(typ.Bits())
@@ -170,7 +170,7 @@ func makeUnsignedSinglePacker(typ reflect.Type, ilsb int, width uint8) packer {
 	}
 }
 
-func makeSignedSinglePacker(typ reflect.Type, ilsb int, width uint8) packer {
+func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 	firstByte := ilsb / 8
 	lsb := uint8(ilsb % 8)
 	canOverflow := width != uint8(typ.Bits())
@@ -355,7 +355,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb int, width uint8) packer {
 	}
 }
 
-func makeUnsignedSingleUnpacker(typ reflect.Type, ilsb int, width uint8) unpacker {
+func makeUnsignedSingleUnpacker(typ reflect.Type, ilsb uint64, width uint8) unpacker {
 	firstByte := ilsb / 8
 	lsb := uint8(ilsb % 8)
 	switch {
@@ -425,7 +425,7 @@ func makeUnsignedSingleUnpacker(typ reflect.Type, ilsb int, width uint8) unpacke
 	}
 }
 
-func makeSignedSingleUnpacker(typ reflect.Type, ilsb int, width uint8) unpacker {
+func makeSignedSingleUnpacker(typ reflect.Type, ilsb uint64, width uint8) unpacker {
 	firstByte := ilsb / 8
 	lsb := uint8(ilsb % 8)
 	switch {
@@ -495,7 +495,7 @@ func makeSignedSingleUnpacker(typ reflect.Type, ilsb int, width uint8) unpacker 
 	}
 }
 
-func makeBoolSinglePacker(lsb int) packer {
+func makeBoolSinglePacker(lsb uint64) packer {
 	firstByte := lsb / 8
 	tru := byte(1) << uint8(lsb%8)
 	return func(b []byte, field reflect.Value) {
@@ -505,7 +505,7 @@ func makeBoolSinglePacker(lsb int) packer {
 	}
 }
 
-func makeBoolSingleUnpacker(lsb int) unpacker {
+func makeBoolSingleUnpacker(lsb uint64) unpacker {
 	firstByte := lsb / 8
 	tru := byte(1) << uint8(lsb%8)
 	return func(b []byte, field reflect.Value) {
