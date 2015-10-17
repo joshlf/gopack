@@ -220,13 +220,14 @@ func getFieldWidth(field reflect.StructField) (uint64, error) {
 
 	n, err := strconv.Atoi(str)
 	if err != nil {
-		return 0, Error{fmt.Errorf("gopack: struct tag on field \"%v\": %v", field.Name, err)}
-	}
-	if n > int(bits) {
-		return 0, Error{fmt.Errorf("gopack: struct tag on field \"%v\" (type %v) too wide (%v)", field.Name, field.Type, n)}
-	}
-	if n < 1 {
-		return 0, Error{fmt.Errorf("gopack: struct tag on field \"%v\" too small (%v)", field.Name, n)}
+		return 0, Error{fmt.Errorf("gopack: struct tag on field %q: %s",
+			field.Name, err)}
+	} else if n > int(bits) {
+		return 0, Error{fmt.Errorf("gopack: struct tag on field %q (type %s) too wide (%d)",
+			field.Name, field.Type, n)}
+	} else if n < 1 {
+		return 0, Error{fmt.Errorf("gopack: struct tag on field %q too small (%d)",
+			field.Name, n)}
 	}
 	return uint64(n), nil
 }
