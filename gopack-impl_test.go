@@ -394,6 +394,21 @@ func TestSignedPacking(t *testing.T) {
 	if val != (typ{-1}) {
 		t.Fatalf("Expected %v; got %v", typ{-1}, val)
 	}
+
+	type typ1 struct {
+		F1 int8 `gopack:"7"`
+	}
+	val1 := typ1{-1}
+	Pack(b[:], val1)
+	if b != [...]byte{127} {
+		t.Fatalf("Expected %v; got %v", [...]byte{127}, b)
+	}
+
+	val1 = typ1{}
+	Unpack(b[:], &val1)
+	if val1 != (typ1{-1}) {
+		t.Fatalf("Expected %v; got %v", typ1{-1}, val1)
+	}
 }
 
 func TestBoolPacking(t *testing.T) {
