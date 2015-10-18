@@ -182,7 +182,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		if canOverflow {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				if val < minVal || val > maxVal {
 					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
 				}
@@ -191,7 +191,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		} else {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				b[firstByte] |= byte(u << lsb)
 			}
 		}
@@ -199,7 +199,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		if canOverflow {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				if val < minVal || val > maxVal {
 					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
 				}
@@ -208,7 +208,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		} else {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(u << lsb)
 			}
 		}
@@ -217,7 +217,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		if canOverflow {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				if val < minVal || val > maxVal {
 					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
 				}
@@ -227,7 +227,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		} else {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(u << lsb)
 				b[firstByte+2] |= byte(u >> shift)
 			}
@@ -236,7 +236,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		if canOverflow {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				if val < minVal || val > maxVal {
 					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
 				}
@@ -245,7 +245,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		} else {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
 			}
 		}
@@ -254,7 +254,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		if canOverflow {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				if val < minVal || val > maxVal {
 					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
 				}
@@ -264,7 +264,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		} else {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
 				b[firstByte+4] |= byte(u >> shift)
 			}
@@ -274,7 +274,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		if canOverflow {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				if val < minVal || val > maxVal {
 					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
 				}
@@ -284,7 +284,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		} else {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
 				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift)
 			}
@@ -295,7 +295,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		if canOverflow {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				if val < minVal || val > maxVal {
 					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
 				}
@@ -306,7 +306,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		} else {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
 				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift1)
 				b[firstByte+6] |= byte(u >> shift2)
@@ -316,7 +316,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		if canOverflow {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				if val < minVal || val > maxVal {
 					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
 				}
@@ -325,7 +325,7 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 		} else {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << (64 - width)) >> (64 - width)
+				u := (uint64(val) << (64 - width)) >> (64 - width)
 				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
 			}
 		}
@@ -340,14 +340,14 @@ func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
 				if val < minVal || val > maxVal {
 					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
 				}
-				u := (*(*uint64)(unsafe.Pointer(&val)) << shift1) >> shift1
+				u := (uint64(val) << shift1) >> shift1
 				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
 				b[firstByte+8] |= byte(u >> shift2)
 			}
 		} else {
 			return func(b []byte, field reflect.Value) {
 				val := field.Int()
-				u := (*(*uint64)(unsafe.Pointer(&val)) << shift1) >> shift1
+				u := (uint64(val) << shift1) >> shift1
 				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
 				b[firstByte+8] |= byte(u >> shift2)
 			}
