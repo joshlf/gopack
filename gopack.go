@@ -72,20 +72,24 @@ var unpackerCache struct {
 //	}
 func Pack(b []byte, strct interface{}) {
 	v := reflect.ValueOf(strct)
+	p := packerFor(v)
+	p(b, v)
+}
+
+func packerFor(v reflect.Value) packer {
 	typ := v.Type()
 	packerCache.RLock()
 	p, ok := packerCache.m[typ]
 	packerCache.RUnlock()
 	if ok {
-		p(b, v)
-		return
+		return p
 	}
 
 	p = makePackerWrapper(typ)
 	packerCache.Lock()
 	packerCache.m[typ] = p
 	packerCache.Unlock()
-	p(b, v)
+	return p
 }
 
 // Unpack the data in b into the fields of strct.
