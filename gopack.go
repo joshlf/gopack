@@ -6,6 +6,7 @@
 package gopack
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 )
@@ -16,9 +17,14 @@ type Error struct {
 	error
 }
 
+type cachedPacker struct {
+	packer
+	bytes int
+}
+
 var packerCache struct {
 	sync.RWMutex
-	m map[reflect.Type]packer
+	m map[reflect.Type]cachedPacker
 }
 
 var unpackerCache struct {
@@ -72,24 +78,37 @@ var unpackerCache struct {
 //	}
 func Pack(b []byte, strct interface{}) {
 	v := reflect.ValueOf(strct)
-	p := packerFor(v)
+	p, bytes := packerFor(v)
+	if len(b) < bytes {
+		panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
+	}
+	for i := 0; i < bytes; i++ {
+		b[i] = 0
+	}
 	p(b, v)
 }
 
-func packerFor(v reflect.Value) packer {
+// PackedSizeof returns the number of bytes needed to pack the given value.
+func PackedSizeof(strct interface{}) int {
+	_, bytes := packerFor(reflect.ValueOf(strct))
+	return bytes
+}
+
+// Returns the packer and number of bytes needed by this packer.
+func packerFor(v reflect.Value) (packer, int) {
 	typ := v.Type()
 	packerCache.RLock()
-	p, ok := packerCache.m[typ]
+	entry, ok := packerCache.m[typ]
 	packerCache.RUnlock()
 	if ok {
-		return p
+		return entry.packer, entry.bytes
 	}
 
-	p = makePackerWrapper(typ)
+	p, bytes := makePackerWrapper(typ)
 	packerCache.Lock()
-	packerCache.m[typ] = p
+	packerCache.m[typ] = cachedPacker{packer: p, bytes: bytes}
 	packerCache.Unlock()
-	return p
+	return p, bytes
 }
 
 // Unpack the data in b into the fields of strct.
@@ -123,6 +142,6 @@ func Unpack(b []byte, strct interface{}) {
 }
 
 func init() {
-	packerCache.m = make(map[reflect.Type]packer)
+	packerCache.m = make(map[reflect.Type]cachedPacker)
 	unpackerCache.m = make(map[reflect.Type]unpacker)
 }

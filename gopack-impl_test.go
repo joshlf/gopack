@@ -34,6 +34,10 @@ func TestMakeUnpacker(t *testing.T) {
 		F1 uint8
 	}
 
+	if sz := PackedSizeof(typ{}); sz != 1 {
+		t.Errorf("Expected a packed size of 1 but got %d", sz)
+	}
+
 	b := []byte{127}
 	val := typ{}
 	Unpack(b, &val)
@@ -195,16 +199,15 @@ func TestCoverSigned(t *testing.T) {
 
 func testCover(t *testing.T, v interface{}) {
 	typ := reflect.TypeOf(v)
-	p := makePackerWrapper(typ)
+	p, n := makePackerWrapper(typ)
 	u := makeUnpackerWrapper(reflect.PtrTo(typ))
-	_, n, _ := makePacker(0, typ)
-	b := make([]byte, (int(n)/8)+1)
 
 	// Note: increasing the iterations to 1000*1000
 	// will cause the full test suite to take ~30s
 	for i := 0; i < 1000*100; i++ {
 		val1 := randInstance(typ)
 		val2 := reflect.New(typ)
+		b := make([]byte, n)
 		p(b, val1)
 		u(b, val2)
 		if val2.Elem().Interface() != val1.Interface() {
@@ -241,11 +244,11 @@ func TestByteBoundaries(t *testing.T) {
 	}
 
 	val := typ{}
-	p := makePackerWrapper(reflect.TypeOf(val))
+	p, _ := makePackerWrapper(reflect.TypeOf(val))
 	u := makeUnpackerWrapper(reflect.TypeOf(&val))
-	var b [32]byte
 
 	for i := 0; i < 1000*1000; i++ {
+		var b [32]byte
 		val = typ{
 			uint8(randUint64Bits(1)),
 			uint8(randUint64Bits(5)),
