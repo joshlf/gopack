@@ -17,7 +17,7 @@ func clearCaches() {
 	unpackerCache.Lock()
 	defer unpackerCache.Unlock()
 
-	packerCache.m = make(map[reflect.Type]packer)
+	packerCache.m = make(map[reflect.Type]cachedPacker)
 	unpackerCache.m = make(map[reflect.Type]unpacker)
 }
 
@@ -31,7 +31,7 @@ func BenchmarkBool1Field(b *testing.B) {
 		F1 bool
 	}
 
-	p := makePackerWrapper(reflect.TypeOf(typ{}))
+	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -45,7 +45,7 @@ func BenchmarkBool2Fields(b *testing.B) {
 		F1, F2 bool
 	}
 
-	p := makePackerWrapper(reflect.TypeOf(typ{}))
+	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -59,7 +59,7 @@ func BenchmarkBool4Fields(b *testing.B) {
 		F1, F2, F3, F4 bool
 	}
 
-	p := makePackerWrapper(reflect.TypeOf(typ{}))
+	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -73,7 +73,7 @@ func BenchmarkBool8Fields(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8 bool
 	}
 
-	p := makePackerWrapper(reflect.TypeOf(typ{}))
+	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -87,7 +87,7 @@ func BenchmarkBool9Fields(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8, F9 bool
 	}
 
-	p := makePackerWrapper(reflect.TypeOf(typ{}))
+	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 2)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -101,7 +101,7 @@ func BenchmarkBool16Fields(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16 bool
 	}
 
-	p := makePackerWrapper(reflect.TypeOf(typ{}))
+	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 2)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -396,7 +396,7 @@ func BenchmarkUseEmptyPacker(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -411,7 +411,7 @@ func BenchmarkUsePacker1Field(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 1)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -426,7 +426,7 @@ func BenchmarkUsePacker2Fields(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 2)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -441,7 +441,7 @@ func BenchmarkUsePacker4Fields(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 4)
 	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
@@ -456,7 +456,7 @@ func BenchmarkUsePacker8Fields(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 8)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -471,7 +471,7 @@ func BenchmarkUsePacker8FieldsSigned(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 8)
 	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
@@ -576,7 +576,7 @@ func BenchmarkNested1Level(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
 	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
@@ -594,7 +594,7 @@ func BenchmarkNested2Levels(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
 	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
@@ -616,7 +616,7 @@ func BenchmarkNested4Levels(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
 	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
@@ -646,7 +646,7 @@ func BenchmarkNested8Levels(b *testing.B) {
 	}
 
 	t := reflect.TypeOf(typ{})
-	p := makePackerWrapper(t)
+	p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
 	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()

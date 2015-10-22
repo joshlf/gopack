@@ -13,26 +13,16 @@ import (
 type packer func(b []byte, v reflect.Value)
 type unpacker func(b []byte, v reflect.Value)
 
-func makePackerWrapper(strct reflect.Type) packer {
+func makePackerWrapper(strct reflect.Type) (packer, int) {
 	p, bits, err := makePacker(0, strct)
 	if err != nil {
-		return func(b []byte, v reflect.Value) {
-			panic(err)
-		}
+		panic(err)
 	}
 	bytes := int(bits) / 8
 	if bits%8 != 0 {
 		bytes++
 	}
-	return func(b []byte, v reflect.Value) {
-		if len(b) < bytes {
-			panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
-		}
-		for i := 0; i < bytes; i++ {
-			b[i] = 0
-		}
-		p(b, v)
-	}
+	return p, bytes
 }
 
 func makeUnpackerWrapper(strct reflect.Type) unpacker {
