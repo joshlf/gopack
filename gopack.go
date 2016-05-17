@@ -15,11 +15,6 @@ import (
 // will be of type Error.
 type Error struct{ error }
 
-// since we never return an Error value as
-// an error (just call panic on them directly),
-// make sure it actually implements error
-var _ = error(Error{nil})
-
 type cachedLayout struct {
 	layout
 	bytes int
@@ -30,16 +25,15 @@ var layoutCache = struct {
 	m map[reflect.Type]cachedLayout
 }{m: make(map[reflect.Type]cachedLayout)}
 
-// Pack the fields of strct into b. Fields must be
-// of an int or bool type, or must be of a struct
-// type whose fields are properly typed (structs
-// may be nested arbitrarily deep). If strct is not
-// a struct or a pointer to a struct, or if any
-// of the fields are not of an allowed type, Pack
-// will panic.
+// Pack v into b. v must be an int or bool type,
+// or must be a struct or array type whose elements
+// or fields are properly typed (these may be nested
+// arbitrarily deep). v may also be a pointer to one
+// of these types, or a pointer to a pointer to one
+// of these types, etc.
 //
-// Fields may optionally be tagged with a size in
-// bits using the key "gopack".
+// Struct fields may optionally be tagged with a size
+// in bits using the key "gopack".
 //
 //	type unixMode struct {
 //		User, Group, Other uint8 `gopack:"3"`
@@ -50,21 +44,21 @@ var layoutCache = struct {
 // etc). If a field is tagged with an impossible size
 // (less than 1, or larger than the native size of the
 // field), or if the tag value cannot be parsed as an
-// integer, Pack will panic. If a field holds a value
-// which cannot be packed in the specified number of
-// bits, Pack will panic (for example, if unixMode.User
-// from the above example were set to 8, which cannot
-// be stored in 3 bits).
+// integer, Pack will return an error. If a field holds
+// a value which cannot be packed in the specified number
+// of bits, Pack will return an error (for example, if
+// unixMode.User from the above example were set to 8,
+// which cannot be stored in 3 bits).
 //
-// bool-typed fields always take up 1 bit, and any field
-// tags are ignored.
+// bool-typed fields always take up 1 bit, and may not
+// have field tags.
 //
 // If there are bits in the last used byte of b which
 // are beyond the end of the packed data (for example,
 // the last four bits of the second byte when packing
 // 12 bits), those bits will be zeroed. If b is not
 // sufficiently long to hold all of the bits of strct,
-// Pack will panic.
+// Pack will return an error.
 //
 // Fields which are not exported are ignored, and
 // take up no space in the packing.
@@ -100,18 +94,10 @@ func Pack(b []byte, v interface{}) (err error) {
 	return nil
 }
 
-// Unpack the data in b into the fields of strct.
-// strct must be either a struct or a pointer to
-// a struct, or else Unpack will panic. However,
-// if strct is not a pointer, all values extracted
-// from b will be discarded since strct is passed by
-// value.
-//
-// All of the restrictions on the type of strct
-// documented for Pack apply to Unpack.
-//
-// If b is not sufficiently long to hold all of
-// the bits of strct, Unpack will panic.
+// Unpack the data in b into v. v must be a pointer,
+// and its element type must follow the rules documented
+// in Pack. If b is not sufficiently long to hold all
+// of the bits of v, Unpack will return an error.
 func Unpack(b []byte, v interface{}) (err error) {
 	rv, err := normalizeArgument(v, true, "Unpack")
 	if err != nil {
@@ -131,7 +117,8 @@ func Unpack(b []byte, v interface{}) (err error) {
 	return nil
 }
 
-// PackedSizeof returns the number of bytes needed to pack the given value.
+// PackedSizeof returns the number of bytes needed to
+// pack the given value.
 func PackedSizeof(v interface{}) (bytes int, err error) {
 	rv, err := normalizeArgument(v, false, "PackedSizeof")
 	if err != nil {
