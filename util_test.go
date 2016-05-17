@@ -7,7 +7,11 @@ package gopack
 import (
 	"fmt"
 	"math/rand"
+	"path/filepath"
 	"reflect"
+	"runtime"
+	"strconv"
+	"testing"
 	"unsafe"
 )
 
@@ -89,4 +93,57 @@ func randInstance(typ reflect.Type) reflect.Value {
 		}
 	}
 	return val
+}
+
+func getFieldWidth(field reflect.StructField) (uint64, error) {
+	bits := uint64(field.Type.Bits())
+	str := field.Tag.Get("gopack")
+	if str == "" {
+		return bits, nil
+	}
+
+	n, err := strconv.Atoi(str)
+	if err != nil {
+		return 0, Error{fmt.Errorf("gopack: struct tag on field %q: %s",
+			field.Name, err)}
+	} else if n > int(bits) {
+		return 0, Error{fmt.Errorf("gopack: struct tag on field %q (type %s) too wide (%d)",
+			field.Name, field.Type, n)}
+	} else if n < 1 {
+		return 0, Error{fmt.Errorf("gopack: struct tag on field %q too small (%d)",
+			field.Name, n)}
+	}
+	return uint64(n), nil
+}
+
+func isExported(field reflect.StructField) bool {
+	// See http://golang.org/pkg/reflect/#StructField
+	return field.PkgPath == ""
+}
+
+func must(t *testing.T, err error) {
+	if err != nil {
+		t.Fatal(nsprintf(1, "%v", err))
+	}
+}
+
+func mustError(t *testing.T, err error) {
+	if err == nil {
+		t.Fatal(nsprintf(1, "unexpected nil error"))
+	}
+	if err.Error() == "internal server error" {
+		t.Fatal(nsprintf(1, "unexpected internal server error"))
+	}
+}
+
+// nsprintf returns a formatted log line
+// that includes the file/line number
+// of the nth caller up the stack
+func nsprintf(n int, format string, args ...interface{}) string {
+	_, file, line, ok := runtime.Caller(n + 1)
+	if !ok {
+		return fmt.Sprintf("unknown file/line: "+format, args...)
+	}
+	file = filepath.Base(file)
+	return fmt.Sprintf("%v:%v: "+format, append([]interface{}{file, line}, args...)...)
 }

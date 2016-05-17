@@ -11,14 +11,10 @@ import (
 	"testing"
 )
 
-func clearCaches() {
-	packerCache.Lock()
-	defer packerCache.Unlock()
-	unpackerCache.Lock()
-	defer unpackerCache.Unlock()
-
-	packerCache.m = make(map[reflect.Type]cachedPacker)
-	unpackerCache.m = make(map[reflect.Type]unpacker)
+func clearCache() {
+	layoutCache.Lock()
+	layoutCache.m = make(map[reflect.Type]cachedLayout)
+	layoutCache.Unlock()
 }
 
 func BenchmarkBaseline(b *testing.B) {
@@ -31,12 +27,14 @@ func BenchmarkBool1Field(b *testing.B) {
 		F1 bool
 	}
 
-	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
-	val := reflect.ValueOf(typ{})
+	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, val)
+		// p(bytes, val)
 	}
 }
 
@@ -45,12 +43,14 @@ func BenchmarkBool2Fields(b *testing.B) {
 		F1, F2 bool
 	}
 
-	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
-	val := reflect.ValueOf(typ{})
+	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, val)
+		// p(bytes, val)
 	}
 }
 
@@ -59,12 +59,14 @@ func BenchmarkBool4Fields(b *testing.B) {
 		F1, F2, F3, F4 bool
 	}
 
-	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
-	val := reflect.ValueOf(typ{})
+	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, val)
+		// p(bytes, val)
 	}
 }
 
@@ -73,12 +75,14 @@ func BenchmarkBool8Fields(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8 bool
 	}
 
-	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 1)
-	val := reflect.ValueOf(typ{})
+	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, val)
+		// p(bytes, val)
 	}
 }
 
@@ -87,12 +91,14 @@ func BenchmarkBool9Fields(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8, F9 bool
 	}
 
-	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 2)
-	val := reflect.ValueOf(typ{})
+	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, val)
+		// p(bytes, val)
 	}
 }
 
@@ -101,17 +107,19 @@ func BenchmarkBool16Fields(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16 bool
 	}
 
-	p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _ := makePackerWrapper(reflect.TypeOf(typ{}))
 	bytes := make([]byte, 2)
-	val := reflect.ValueOf(typ{})
+	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, val)
+		// p(bytes, val)
 	}
 }
 
 func BenchmarkLockContention(b *testing.B) {
-	clearCaches()
+	clearCache()
 	type typ struct {
 		F1 uint8
 	}
@@ -142,7 +150,7 @@ func BenchmarkLockContention(b *testing.B) {
 }
 
 func BenchmarkNoLockContention(b *testing.B) {
-	clearCaches()
+	clearCache()
 	type typ struct {
 		F1 uint8
 	}
@@ -178,11 +186,13 @@ func BenchmarkPackBackend1Field(b *testing.B) {
 
 	t := typ{}
 	bytes := []byte{0}
-	p, _, _ := makePacker(0, reflect.TypeOf(t))
-	v := reflect.ValueOf(t)
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _, _ := makePacker(0, reflect.TypeOf(t))
+	v := reflect.ValueOf(&t).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, v)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -207,11 +217,13 @@ func BenchmarkPackBackend2Fields(b *testing.B) {
 
 	t := typ{}
 	bytes := []byte{0, 0}
-	p, _, _ := makePacker(0, reflect.TypeOf(t))
-	v := reflect.ValueOf(t)
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _, _ := makePacker(0, reflect.TypeOf(t))
+	v := reflect.ValueOf(&t).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, v)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -236,11 +248,13 @@ func BenchmarkPackBackend4Fields(b *testing.B) {
 
 	t := typ{}
 	bytes := []byte{0, 0, 0, 0}
-	p, _, _ := makePacker(0, reflect.TypeOf(t))
-	v := reflect.ValueOf(t)
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _, _ := makePacker(0, reflect.TypeOf(t))
+	v := reflect.ValueOf(&t).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, v)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -265,129 +279,72 @@ func BenchmarkPackBackend8Fields(b *testing.B) {
 
 	t := typ{}
 	bytes := []byte{0, 0, 0, 0, 0, 0, 0, 0}
-	p, _, _ := makePacker(0, reflect.TypeOf(t))
-	v := reflect.ValueOf(t)
+	l, _, _ := layoutFor(reflect.ValueOf(typ{}))
+	// p, _, _ := makePacker(0, reflect.TypeOf(t))
+	v := reflect.ValueOf(&t).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, v)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
-func BenchmarkMakeEmptyPacker(b *testing.B) {
+func BenchmarkMakeLayout0Fields(b *testing.B) {
 	type typ struct {
 	}
 
-	t := reflect.TypeOf(typ{})
+	v := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
+		makeLayout(v)
 	}
 }
 
-func BenchmarkMakePacker1Field(b *testing.B) {
-	type typ struct {
-		F1 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
-	}
-}
-
-func BenchmarkMakePacker2Fields(b *testing.B) {
-	type typ struct {
-		F1, F2 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
-	}
-}
-
-func BenchmarkMakePacker4Fields(b *testing.B) {
-	type typ struct {
-		F1, F2, F3, F4 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
-	}
-}
-
-func BenchmarkMakePacker8Fields(b *testing.B) {
-	type typ struct {
-		F1, F2, F3, F4, F5, F6, F7, F8 uint8
-	}
-
-	t := reflect.TypeOf(typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makePackerWrapper(t)
-	}
-}
-
-func BenchmarkMakeEmptyUnpacker(b *testing.B) {
-	type typ struct {
-	}
-
-	t := reflect.TypeOf(&typ{})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		makeUnpackerWrapper(t)
-	}
-}
-
-func BenchmarkMakeUnpacker1Field(b *testing.B) {
+func BenchmarkMakeLayout1Field(b *testing.B) {
 	type typ struct {
 		F1 uint8
 	}
 
-	t := reflect.TypeOf(&typ{})
+	v := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		makeUnpackerWrapper(t)
+		makeLayout(v)
 	}
 }
 
-func BenchmarkMakeUnpacker2Fields(b *testing.B) {
+func BenchmarkMakeLayout2Fields(b *testing.B) {
 	type typ struct {
 		F1, F2 uint8
 	}
 
-	t := reflect.TypeOf(&typ{})
+	v := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		makeUnpackerWrapper(t)
+		makeLayout(v)
 	}
 }
 
-func BenchmarkMakeUnpacker4Fields(b *testing.B) {
+func BenchmarkMakeLayout4Fields(b *testing.B) {
 	type typ struct {
 		F1, F2, F3, F4 uint8
 	}
 
-	t := reflect.TypeOf(&typ{})
+	v := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		makeUnpackerWrapper(t)
+		makeLayout(v)
 	}
 }
 
-func BenchmarkMakeUnpacker8Fields(b *testing.B) {
+func BenchmarkMakeLayout8Fields(b *testing.B) {
 	type typ struct {
 		F1, F2, F3, F4, F5, F6, F7, F8 uint8
 	}
 
-	t := reflect.TypeOf(&typ{})
+	v := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		makeUnpackerWrapper(t)
+		makeLayout(v)
 	}
 }
 
@@ -395,13 +352,14 @@ func BenchmarkUseEmptyPacker(b *testing.B) {
 	type typ struct {
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
-	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -410,13 +368,14 @@ func BenchmarkUsePacker1Field(b *testing.B) {
 		F1 uint8
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 1)
-	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -425,13 +384,14 @@ func BenchmarkUsePacker2Fields(b *testing.B) {
 		F1, F2 uint8
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 2)
-	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -440,13 +400,14 @@ func BenchmarkUsePacker4Fields(b *testing.B) {
 		F1, F2, F3, F4 uint8
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 4)
-	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -455,13 +416,14 @@ func BenchmarkUsePacker8Fields(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8 uint8
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 8)
-	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -470,13 +432,14 @@ func BenchmarkUsePacker8FieldsSigned(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8 int8
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 8)
-	val := reflect.ValueOf(typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -484,13 +447,14 @@ func BenchmarkUseEmptyUnpacker(b *testing.B) {
 	type typ struct {
 	}
 
-	t := reflect.TypeOf(&typ{})
-	u := makeUnpackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
-	val := reflect.ValueOf(&typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		u(bytes, val)
+		unpack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -499,13 +463,14 @@ func BenchmarkUseUnpacker1Field(b *testing.B) {
 		F1 uint8
 	}
 
-	t := reflect.TypeOf(&typ{})
-	u := makeUnpackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 1)
-	val := reflect.ValueOf(&typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		u(bytes, val)
+		unpack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -514,13 +479,14 @@ func BenchmarkUseUnpacker2Fields(b *testing.B) {
 		F1, F2 uint8
 	}
 
-	t := reflect.TypeOf(&typ{})
-	u := makeUnpackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 2)
-	val := reflect.ValueOf(&typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		u(bytes, val)
+		unpack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -529,13 +495,14 @@ func BenchmarkUseUnpacker4Fields(b *testing.B) {
 		F1, F2, F3, F4 uint8
 	}
 
-	t := reflect.TypeOf(&typ{})
-	u := makeUnpackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 4)
-	val := reflect.ValueOf(&typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		u(bytes, val)
+		unpack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -544,13 +511,14 @@ func BenchmarkUseUnpacker8Fields(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8 uint8
 	}
 
-	t := reflect.TypeOf(&typ{})
-	u := makeUnpackerWrapper(t)
-	bytes := make([]byte, 8)
-	val := reflect.ValueOf(&typ{})
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
+	bytes := make([]byte, 16)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		u(bytes, val)
+		unpack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -559,13 +527,14 @@ func BenchmarkUseUnpacker8FieldsSigned(b *testing.B) {
 		F1, F2, F3, F4, F5, F6, F7, F8 int8
 	}
 
-	t := reflect.TypeOf(&typ{})
-	u := makeUnpackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 8)
-	val := reflect.ValueOf(&typ{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		u(bytes, val)
+		unpack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -575,13 +544,14 @@ func BenchmarkNested1Level(b *testing.B) {
 		}
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
-	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -593,13 +563,14 @@ func BenchmarkNested2Levels(b *testing.B) {
 		}
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
-	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -615,13 +586,14 @@ func BenchmarkNested4Levels(b *testing.B) {
 		}
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
-	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }
 
@@ -645,12 +617,13 @@ func BenchmarkNested8Levels(b *testing.B) {
 		}
 	}
 
-	t := reflect.TypeOf(typ{})
-	p, _ := makePackerWrapper(t)
+	v := reflect.ValueOf(&typ{}).Elem()
+	l, _, _ := makeLayout(v)
+	// p, _ := makePackerWrapper(t)
 	bytes := make([]byte, 0)
-	val := reflect.ValueOf(&typ{}).Elem()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p(bytes, val)
+		pack(bytes, l, v)
+		// p(bytes, val)
 	}
 }

@@ -11,26 +11,24 @@ import (
 	"sync"
 )
 
-// Any panic originating from this package
+// Any error returned by this package
 // will be of type Error.
-type Error struct {
-	error
-}
+type Error struct{ error }
 
-type cachedPacker struct {
-	packer
+// since we never return an Error value as
+// an error (just call panic on them directly),
+// make sure it actually implements error
+var _ = error(Error{nil})
+
+type cachedLayout struct {
+	layout
 	bytes int
 }
 
-var packerCache struct {
+var layoutCache = struct {
 	sync.RWMutex
-	m map[reflect.Type]cachedPacker
-}
-
-var unpackerCache struct {
-	sync.RWMutex
-	m map[reflect.Type]unpacker
-}
+	m map[reflect.Type]cachedLayout
+}{m: make(map[reflect.Type]cachedLayout)}
 
 // Pack the fields of strct into b. Fields must be
 // of an int or bool type, or must be of a struct
@@ -76,39 +74,30 @@ var unpackerCache struct {
 //		name string
 //		Age, Height uint8
 //	}
-func Pack(b []byte, strct interface{}) {
-	v := reflect.ValueOf(strct)
-	p, bytes := packerFor(v)
-	if len(b) < bytes {
-		panic(Error{fmt.Errorf("gopack: buffer too small (%v; need %v)", len(b), bytes)})
+func Pack(b []byte, v interface{}) (err error) {
+	rv, err := normalizeArgument(v, false, "Pack")
+	if err != nil {
+		return err
 	}
-	for i := 0; i < bytes; i++ {
+
+	layout, bytes, err := layoutFor(rv)
+	if err != nil {
+		return errorf("gopack: Pack: %v", err)
+	}
+
+	if len(b) < bytes {
+		return errorf("gopack: Pack: buffer too small (got %v; need %v)", len(b), bytes)
+	}
+
+	// clear it since pack uses |= operations
+	for i := range b {
 		b[i] = 0
 	}
-	p(b, v)
-}
-
-// PackedSizeof returns the number of bytes needed to pack the given value.
-func PackedSizeof(strct interface{}) int {
-	_, bytes := packerFor(reflect.ValueOf(strct))
-	return bytes
-}
-
-// Returns the packer and number of bytes needed by this packer.
-func packerFor(v reflect.Value) (packer, int) {
-	typ := v.Type()
-	packerCache.RLock()
-	entry, ok := packerCache.m[typ]
-	packerCache.RUnlock()
-	if ok {
-		return entry.packer, entry.bytes
+	err = pack(b, layout, rv)
+	if err != nil {
+		return errorf("gopack: Pack: %v", err)
 	}
-
-	p, bytes := makePackerWrapper(typ)
-	packerCache.Lock()
-	packerCache.m[typ] = cachedPacker{packer: p, bytes: bytes}
-	packerCache.Unlock()
-	return p, bytes
+	return nil
 }
 
 // Unpack the data in b into the fields of strct.
@@ -123,25 +112,95 @@ func packerFor(v reflect.Value) (packer, int) {
 //
 // If b is not sufficiently long to hold all of
 // the bits of strct, Unpack will panic.
-func Unpack(b []byte, strct interface{}) {
-	v := reflect.ValueOf(strct)
-	typ := v.Type()
-	unpackerCache.RLock()
-	u, ok := unpackerCache.m[typ]
-	unpackerCache.RUnlock()
-	if ok {
-		u(b, v)
-		return
+func Unpack(b []byte, v interface{}) (err error) {
+	rv, err := normalizeArgument(v, true, "Unpack")
+	if err != nil {
+		return err
 	}
 
-	u = makeUnpackerWrapper(typ)
-	unpackerCache.Lock()
-	unpackerCache.m[typ] = u
-	unpackerCache.Unlock()
-	u(b, v)
+	layout, bytes, err := layoutFor(rv)
+	if err != nil {
+		return errorf("gopack: Unpack: %v", err)
+	}
+
+	if len(b) < bytes {
+		return errorf("gopack: Unpack: buffer too small (got %v; need %v)", len(b), bytes)
+	}
+
+	unpack(b, layout, rv)
+	return nil
 }
 
-func init() {
-	packerCache.m = make(map[reflect.Type]cachedPacker)
-	unpackerCache.m = make(map[reflect.Type]unpacker)
+// PackedSizeof returns the number of bytes needed to pack the given value.
+func PackedSizeof(v interface{}) (bytes int, err error) {
+	rv, err := normalizeArgument(v, false, "PackedSizeof")
+	if err != nil {
+		return 0, err
+	}
+	_, bytes, err = layoutFor(rv)
+	if err != nil {
+		return 0, errorf("gopack: PackedSizeof: %v", err)
+	}
+	return bytes, nil
+}
+
+func layoutFor(v reflect.Value) (layout, int, error) {
+	typ := v.Type()
+	layoutCache.RLock()
+	entry, ok := layoutCache.m[typ]
+	layoutCache.RUnlock()
+	if ok {
+		return entry.layout, entry.bytes, nil
+	}
+
+	l, bytes, err := makeLayout(v)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	layoutCache.Lock()
+	layoutCache.m[typ] = cachedLayout{layout: l, bytes: bytes}
+	layoutCache.Unlock()
+	return l, bytes, nil
+}
+
+// normalizeArgument normalizes v according to the following rules:
+//  - if unpack is true, v must be a pointer, and is dereferenced
+//    until a non-pointer is encountered, and that is returned (it
+//    will be addressable)
+//  - if pack is true:
+//    - if v is a pointer, it is dereferenced until a non-pointer
+//      is encountered, and that is returned (it will be addressable)
+//    - if v is a non-pointer, a new addressable value is allocated,
+//      and its contents are set to those of v; that is returned
+func normalizeArgument(v interface{}, unpack bool, fname string) (reflect.Value, error) {
+	rv := reflect.ValueOf(v)
+	if v == nil {
+		return reflect.Value{}, errorf("gopack: %v(nil)", fname)
+	}
+	if unpack && rv.Kind() != reflect.Ptr {
+		return reflect.Value{}, errorf("gopack: %v(non-pointer %v)", fname, rv.Type())
+	}
+	if rv.Kind() != reflect.Ptr {
+		// unpack must be false, or the previous
+		// condition would have been true
+		newrv := reflect.New(rv.Type()).Elem()
+		newrv.Set(rv)
+		rv = newrv
+	}
+	for {
+		if rv.Kind() != reflect.Ptr {
+			break
+		}
+		if rv.IsNil() {
+			// TODO(joshlf)
+			return reflect.Value{}, errorf("")
+		}
+		rv = rv.Elem()
+	}
+	return rv, nil
+}
+
+func errorf(format string, a ...interface{}) error {
+	return Error{fmt.Errorf(format, a...)}
 }

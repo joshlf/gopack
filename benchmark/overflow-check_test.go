@@ -7,7 +7,7 @@ package benchmark
 import (
 	"testing"
 
-	"github.com/synful/gopack"
+	"github.com/joshlf/gopack"
 )
 
 func BenchmarkPackOverflowCheckBaseline(b *testing.B) {

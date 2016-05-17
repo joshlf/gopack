@@ -8,507 +8,615 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strconv"
 	"unsafe"
 )
 
-func makeUnsignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
-	firstByte := ilsb / 8
-	lsb := uint8(ilsb % 8)
-	canOverflow := width != uint8(typ.Bits())
-	maxVal := (uint64(1) << width) - 1
-	switch {
-	case lsb+width <= 8:
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				if u > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
-				}
-				b[firstByte] |= byte(u << lsb)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				b[firstByte] |= byte(field.Uint() << lsb)
-			}
+type layout []field
+
+type field struct {
+	// offset from address of the top-level value
+	valByteOffset uint64
+
+	// offset from the beginning of the byte slice
+	bufByteOffset uint64
+
+	// LSB within the first target byte in the byte slice
+	bufLSB uint8
+
+	// width of the packed field
+	bits uint8
+
+	// how many bytes of the packed slice this field
+	// covers (e.g., an 8-bit value starting at LSB
+	// 4 would cover two bytes)
+	bytesSpanned uint8
+
+	// whether values in this field can overflow
+	// their packed representations (i.e., whether
+	// the packed width is smaller than the field
+	// type's width)
+	canOverflow bool
+
+	kind reflect.Kind
+
+	signed bool
+}
+
+func makeLayout(v reflect.Value) (l layout, bytes int, err error) {
+	if !v.CanAddr() {
+		v = reflect.New(v.Type()).Elem()
+	}
+	bits, err := processType(&l, v, 0, v.UnsafeAddr(), 0, "")
+	if err != nil {
+		return nil, 0, err
+	}
+	bytestmp := bits / 8
+	if bits%8 != 0 {
+		bytestmp++
+	}
+	bytestmpInt := int(bytestmp)
+	if bytestmpInt < 0 {
+		bytestmpInt = 0
+	}
+	if uint64(bytestmpInt) != bytestmp {
+		// check for int in particular because
+		// slice indices are ints, so this will
+		// cause our algorithm to fail
+		return nil, 0, fmt.Errorf("packed byte length overflows int: %v", bytestmp)
+	}
+	return l, int(bytestmp), nil
+}
+
+// processType adds entries to l for v or v's fields
+// or elements. It returns the number of bits that
+// were used in the packed buffer, and any error
+// encountered.
+//
+// bufLsb is the absolute LSB from the beginning of the
+// packing buffer. valByteOffset is the offset of this
+// field from the address of the top-lvel value.
+// fieldBits is only set if a custom bit width was set
+// for this field. fieldName is only set if this is
+// a struct field.
+func processType(l *layout, v reflect.Value, bufLsb uint64, baseAddr uintptr, fieldBits uint64, fieldName string) (bits uint64, err error) {
+	t := v.Type()
+
+	if fieldBits > 0 {
+		// fieldBits > 0 means that fieldBits was intentionally set,
+		// which means that it has already been verified that it's
+		// valid to have a struct field tag on this field.
+
+		if int(fieldBits) > t.Bits() {
+			return 0, fmt.Errorf("struct tag on field %q too big", fieldName)
 		}
-	case lsb+width <= 16:
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				if u > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
-				}
-				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(u << lsb)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(field.Uint() << lsb)
-			}
+	}
+
+	switch t.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		var signed bool
+		switch t.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			signed = true
 		}
-	case lsb+width <= 24:
-		shift := 16 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				if u > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
-				}
-				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(u << lsb)
-				b[firstByte+2] |= byte(u >> shift)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(u << lsb)
-				b[firstByte+2] |= byte(u >> shift)
-			}
+		bits = uint64(t.Bits())
+		if fieldBits > 0 {
+			bits = fieldBits
 		}
-	case lsb+width <= 32:
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				if u > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
-				}
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(field.Uint() << lsb)
-			}
+		bytesSpanned := ((bufLsb % 8) + bits) / 8
+		if ((bufLsb%8)+bits)%8 != 0 {
+			bytesSpanned++
 		}
-	case lsb+width <= 40:
-		shift := 32 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				if u > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
-				}
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				b[firstByte+4] |= byte(u >> shift)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				b[firstByte+4] |= byte(u >> shift)
-			}
+		f := field{
+			valByteOffset: uint64(v.UnsafeAddr() - baseAddr),
+			bufByteOffset: bufLsb / 8,
+			bufLSB:        uint8(bufLsb % 8),
+			bits:          uint8(bits),
+			bytesSpanned:  uint8(bytesSpanned),
+			canOverflow:   bits != uint64(t.Bits()),
+			kind:          t.Kind(),
+			signed:        signed,
 		}
-	case lsb+width <= 48:
-		shift := 32 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				if u > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
-				}
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift)
-			}
+		*l = append(*l, f)
+		return bits, nil
+	case reflect.Bool:
+		f := field{
+			valByteOffset: uint64(v.UnsafeAddr() - baseAddr),
+			bufByteOffset: bufLsb / 8,
+			bufLSB:        uint8(bufLsb % 8),
+			bits:          1,
+			bytesSpanned:  1,
+			canOverflow:   false,
+			kind:          reflect.Bool,
+			signed:        false,
 		}
-	case lsb+width <= 56:
-		shift1 := 32 - lsb
-		shift2 := 48 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				if u > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
-				}
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift1)
-				b[firstByte+6] |= byte(u >> shift2)
+		*l = append(*l, f)
+		return 1, nil
+	case reflect.Array:
+		bits = 0
+		for i := 0; i < v.Len(); i++ {
+			vv := v.Index(i)
+			// Pass most arguments through from the top level. baseAddr is constant,
+			// and fieldBits and fieldName, if they were set by the parent, should
+			// be interpreted by the child.
+			b, err := processType(l, vv, bufLsb+bits, baseAddr, fieldBits, fieldName)
+			if err != nil {
+				return 0, err
 			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift1)
-				b[firstByte+6] |= byte(u >> shift2)
-			}
+			bits += b
 		}
-	case lsb+width <= 64:
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				if u > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
+		return bits, nil
+	case reflect.Struct:
+		bits = 0
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Type().Field(i)
+			vv := v.Field(i)
+
+			if field.PkgPath != "" {
+				// It's not exported; see
+				// http://golang.org/pkg/reflect/#StructField
+				continue
+			}
+
+			fieldBits = 0
+			str := field.Tag.Get("gopack")
+
+			if str != "" {
+				k := vv.Kind()
+				if k == reflect.Array {
+					k = vv.Elem().Type().Kind()
 				}
-				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
+				switch k {
+				case reflect.Uint, reflect.Int8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+					reflect.Int, reflect.Uint8, reflect.Int16, reflect.Int32, reflect.Int64:
+				default:
+					return 0, fmt.Errorf("struct tag not allowed on field %q", field.Name)
+				}
+
+				n, err := strconv.Atoi(str)
+				if err != nil {
+					return 0, fmt.Errorf("struct tag on field %q: %s", field.Name, err)
+				}
+				if n < 1 {
+					return 0, fmt.Errorf("struct tag on field %q too small", field.Name)
+				}
+
+				fieldBits = uint64(n)
 			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= field.Uint() << lsb
+
+			b, err := processType(l, vv, bufLsb+bits, baseAddr, fieldBits, field.Name)
+			if err != nil {
+				return 0, err
 			}
+			bits += b
 		}
+		return bits, nil
 	default:
-		// Assume lsb+width <= 72
-		shift := 64 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				if u > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v; got %v", maxVal, u)})
-				}
-				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
-				b[firstByte+8] = byte(u >> shift)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				u := field.Uint()
-				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
-				b[firstByte+8] = byte(u >> shift)
-			}
-		}
+		return 0, fmt.Errorf("cannot pack type %v", t)
 	}
 }
 
-func makeSignedSinglePacker(typ reflect.Type, ilsb uint64, width uint8) packer {
-	firstByte := ilsb / 8
-	lsb := uint8(ilsb % 8)
-	canOverflow := width != uint8(typ.Bits())
-	minVal := int64(-1) << (width - 1)
-	maxUval := uint64(math.MaxUint64) >> (65 - width)
-	maxVal := *(*int64)(unsafe.Pointer(&maxUval))
-	switch {
-	case lsb+width <= 8:
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				if val < minVal || val > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
+// TODO(joshlf): Add name to field type so we can give
+// more helpful error messages
+
+// pack packs the value in v into buf. It assumes that v
+// is addressable, and is described by l, and that buf
+// contains entirely zeroes.
+func pack(buf []byte, l layout, v reflect.Value) error {
+	// TODO(joshlf): Is it safe to make any function
+	// calls after getting the address like this?
+	// Could there be an issue if a function call
+	// overflows the stack, causes a new stack to
+	// be allocated, but addr isn't recognized as
+	// a pointer, so it's not adjusted? This would
+	// only happen if v were stack-allocated, which
+	// would at the very least require the escape
+	// analysis to detect that it won't escape, which
+	// seems exceedingly unlikely, but maybe...?
+	addr := uintptr(v.UnsafeAddr())
+	for _, field := range l {
+		if field.kind == reflect.Bool {
+			if *(*bool)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) {
+				buf[field.bufByteOffset] |= byte(1) << uint8(field.bufLSB%8)
+			}
+		} else if field.signed {
+			var val int64
+			switch field.kind {
+			case reflect.Int8:
+				val = int64(*(*int8)(unsafe.Pointer(addr + uintptr(field.valByteOffset))))
+			case reflect.Int16:
+				val = int64(*(*int16)(unsafe.Pointer(addr + uintptr(field.valByteOffset))))
+			case reflect.Int32:
+				val = int64(*(*int32)(unsafe.Pointer(addr + uintptr(field.valByteOffset))))
+			case reflect.Int64:
+				val = int64(*(*int64)(unsafe.Pointer(addr + uintptr(field.valByteOffset))))
+			}
+			minVal := int64(-1) << (field.bits - 1)
+			maxUval := uint64(math.MaxUint64) >> (65 - field.bits)
+			maxVal := *(*int64)(unsafe.Pointer(&maxUval))
+			switch field.bytesSpanned {
+			case 1:
+				if field.canOverflow {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					if val < minVal || val > maxVal {
+
+						return fmt.Errorf("value out of range: max %v, min %v; got %v", maxVal, minVal, val)
+					}
+					buf[field.bufByteOffset] |= byte(u << field.bufLSB)
+				} else {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					buf[field.bufByteOffset] |= byte(u << field.bufLSB)
 				}
-				b[firstByte] |= byte(u << lsb)
+			case 2:
+				if field.canOverflow {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					if val < minVal || val > maxVal {
+						return fmt.Errorf("value out of range: max %v, min %v; got %v", maxVal, minVal, val)
+					}
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint16(u << field.bufLSB)
+				} else {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint16(u << field.bufLSB)
+				}
+			case 3:
+				shift := 16 - field.bufLSB
+				if field.canOverflow {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					if val < minVal || val > maxVal {
+						return fmt.Errorf("value out of range: max %v, min %v; got %v", maxVal, minVal, val)
+					}
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint16(u << field.bufLSB)
+					buf[field.bufByteOffset+2] |= byte(u >> shift)
+				} else {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint16(u << field.bufLSB)
+					buf[field.bufByteOffset+2] |= byte(u >> shift)
+				}
+			case 4:
+				if field.canOverflow {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					if val < minVal || val > maxVal {
+						return fmt.Errorf("value out of range: max %v, min %v; got %v", maxVal, minVal, val)
+					}
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(u << field.bufLSB)
+				} else {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(u << field.bufLSB)
+				}
+			case 5:
+				shift := 32 - field.bufLSB
+				if field.canOverflow {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					if val < minVal || val > maxVal {
+						return fmt.Errorf("value out of range: max %v, min %v; got %v", maxVal, minVal, val)
+					}
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(u << field.bufLSB)
+					buf[field.bufByteOffset+4] |= byte(u >> shift)
+				} else {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(u << field.bufLSB)
+					buf[field.bufByteOffset+4] |= byte(u >> shift)
+				}
+			case 6:
+				shift := 32 - field.bufLSB
+				if field.canOverflow {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					if val < minVal || val > maxVal {
+						return fmt.Errorf("value out of range: max %v, min %v; got %v", maxVal, minVal, val)
+					}
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(u << field.bufLSB)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4])) |= uint16(u >> shift)
+				} else {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(u << field.bufLSB)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4])) |= uint16(u >> shift)
+				}
+			case 7:
+				shift1 := 32 - field.bufLSB
+				shift2 := 48 - field.bufLSB
+				if field.canOverflow {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					if val < minVal || val > maxVal {
+						return fmt.Errorf("value out of range: max %v, min %v; got %v", maxVal, minVal, val)
+					}
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(u << field.bufLSB)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4])) |= uint16(u >> shift1)
+					buf[field.bufByteOffset+6] |= byte(u >> shift2)
+				} else {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(u << field.bufLSB)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4])) |= uint16(u >> shift1)
+					buf[field.bufByteOffset+6] |= byte(u >> shift2)
+				}
+			case 8:
+				if field.canOverflow {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					if val < minVal || val > maxVal {
+						return fmt.Errorf("value out of range: max %v, min %v; got %v", maxVal, minVal, val)
+					}
+					*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) |= u << field.bufLSB
+				} else {
+					u := (uint64(val) << (64 - field.bits)) >> (64 - field.bits)
+					*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) |= u << field.bufLSB
+				}
+			case 9:
+				// 64 - ((bits + lsb) - 64)
+				shift1 := 64 - field.bits
+				shift2 := 64 - field.bufLSB
+				if field.canOverflow {
+					if val < minVal || val > maxVal {
+						return fmt.Errorf("value out of range: max %v, min %v; got %v", maxVal, minVal, val)
+					}
+					u := (uint64(val) << shift1) >> shift1
+					*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) |= u << field.bufLSB
+					buf[field.bufByteOffset+8] |= byte(u >> shift2)
+				} else {
+					u := (uint64(val) << shift1) >> shift1
+					*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) |= u << field.bufLSB
+					buf[field.bufByteOffset+8] |= byte(u >> shift2)
+				}
+			default:
+				panic("unreachable")
 			}
 		} else {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				b[firstByte] |= byte(u << lsb)
+			var val uint64
+			switch field.kind {
+			case reflect.Uint8:
+				val = uint64(*(*uint8)(unsafe.Pointer(addr + uintptr(field.valByteOffset))))
+			case reflect.Uint16:
+				val = uint64(*(*uint16)(unsafe.Pointer(addr + uintptr(field.valByteOffset))))
+			case reflect.Uint32:
+				val = uint64(*(*uint32)(unsafe.Pointer(addr + uintptr(field.valByteOffset))))
+			case reflect.Uint64:
+				val = uint64(*(*uint64)(unsafe.Pointer(addr + uintptr(field.valByteOffset))))
 			}
-		}
-	case lsb+width <= 16:
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				if val < minVal || val > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
+			maxVal := (uint64(1) << field.bits) - 1
+			switch field.bytesSpanned {
+			case 1:
+				if field.canOverflow {
+					if val > maxVal {
+						return fmt.Errorf("value out of range: max %v; got %v", maxVal, val)
+					}
+					buf[field.bufByteOffset] |= byte(val << field.bufLSB)
+				} else {
+					buf[field.bufByteOffset] |= byte(val << field.bufLSB)
 				}
-				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(u << lsb)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(u << lsb)
-			}
-		}
-	case lsb+width <= 24:
-		shift := 16 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				if val < minVal || val > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
+			case 2:
+				if field.canOverflow {
+					if val > maxVal {
+						return fmt.Errorf("value out of range: max %v; got %v", maxVal, val)
+					}
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint16(val << field.bufLSB)
+				} else {
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint16(val << field.bufLSB)
 				}
-				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(u << lsb)
-				b[firstByte+2] |= byte(u >> shift)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				*(*uint16)(unsafe.Pointer(&b[firstByte])) |= uint16(u << lsb)
-				b[firstByte+2] |= byte(u >> shift)
-			}
-		}
-	case lsb+width <= 32:
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				if val < minVal || val > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
+			case 3:
+				shift := 16 - field.bufLSB
+				if field.canOverflow {
+					if val > maxVal {
+						return fmt.Errorf("value out of range: max %v; got %v", maxVal, val)
+					}
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint16(val << field.bufLSB)
+					buf[field.bufByteOffset+2] |= byte(val >> shift)
+				} else {
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint16(val << field.bufLSB)
+					buf[field.bufByteOffset+2] |= byte(val >> shift)
 				}
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-			}
-		}
-	case lsb+width <= 40:
-		shift := 32 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				if val < minVal || val > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
+			case 4:
+				if field.canOverflow {
+					if val > maxVal {
+						return fmt.Errorf("value out of range: max %v; got %v", maxVal, val)
+					}
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(val << field.bufLSB)
+				} else {
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(val << field.bufLSB)
 				}
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				b[firstByte+4] |= byte(u >> shift)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				b[firstByte+4] |= byte(u >> shift)
-			}
-		}
-	case lsb+width <= 48:
-		shift := 32 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				if val < minVal || val > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
+			case 5:
+				shift := 32 - field.bufLSB
+				if field.canOverflow {
+					if val > maxVal {
+						return fmt.Errorf("value out of range: max %v; got %v", maxVal, val)
+					}
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(val << field.bufLSB)
+					buf[field.bufByteOffset+4] |= byte(val >> shift)
+				} else {
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(val << field.bufLSB)
+					buf[field.bufByteOffset+4] |= byte(val >> shift)
 				}
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift)
-			}
-		}
-	case lsb+width <= 56:
-		shift1 := 32 - lsb
-		shift2 := 48 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				if val < minVal || val > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
+			case 6:
+				shift := 32 - field.bufLSB
+				if field.canOverflow {
+					if val > maxVal {
+						return fmt.Errorf("value out of range: max %v; got %v", maxVal, val)
+					}
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(val << field.bufLSB)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4])) |= uint16(val >> shift)
+				} else {
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(val << field.bufLSB)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4])) |= uint16(val >> shift)
 				}
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift1)
-				b[firstByte+6] |= byte(u >> shift2)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				*(*uint32)(unsafe.Pointer(&b[firstByte])) |= uint32(u << lsb)
-				*(*uint16)(unsafe.Pointer(&b[firstByte+4])) |= uint16(u >> shift1)
-				b[firstByte+6] |= byte(u >> shift2)
-			}
-		}
-	case lsb+width <= 64:
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				if val < minVal || val > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
+			case 7:
+				shift1 := 32 - field.bufLSB
+				shift2 := 48 - field.bufLSB
+				if field.canOverflow {
+					if val > maxVal {
+						return fmt.Errorf("value out of range: max %v; got %v", maxVal, val)
+					}
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(val << field.bufLSB)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4])) |= uint16(val >> shift1)
+					buf[field.bufByteOffset+6] |= byte(val >> shift2)
+				} else {
+					*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) |= uint32(val << field.bufLSB)
+					*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4])) |= uint16(val >> shift1)
+					buf[field.bufByteOffset+6] |= byte(val >> shift2)
 				}
-				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << (64 - width)) >> (64 - width)
-				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
-			}
-		}
-	default:
-		// Assume lsb+width <= 72
-		// 64 - ((width + lsb) - 64)
-		shift1 := 64 - width
-		shift2 := 64 - lsb
-		if canOverflow {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				if val < minVal || val > maxVal {
-					panic(Error{fmt.Errorf("gopack: value out of range: max %v, min %v; got %v", maxVal, minVal, val)})
+			case 8:
+				if field.canOverflow {
+					if val > maxVal {
+						return fmt.Errorf("value out of range: max %v; got %v", maxVal, val)
+					}
+					*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) |= val << field.bufLSB
+				} else {
+					*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) |= val << field.bufLSB
 				}
-				u := (uint64(val) << shift1) >> shift1
-				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
-				b[firstByte+8] |= byte(u >> shift2)
-			}
-		} else {
-			return func(b []byte, field reflect.Value) {
-				val := field.Int()
-				u := (uint64(val) << shift1) >> shift1
-				*(*uint64)(unsafe.Pointer(&b[firstByte])) |= u << lsb
-				b[firstByte+8] |= byte(u >> shift2)
+			case 9:
+				shift := 64 - field.bufLSB
+				if field.canOverflow {
+					if val > maxVal {
+						return fmt.Errorf("value out of range: max %v; got %v", maxVal, val)
+					}
+					*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) |= val << field.bufLSB
+					buf[field.bufByteOffset+8] = byte(val >> shift)
+				} else {
+					*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) |= val << field.bufLSB
+					buf[field.bufByteOffset+8] = byte(val >> shift)
+				}
+			default:
+				panic("unreachable")
 			}
 		}
 	}
+
+	return nil
 }
 
-func makeUnsignedSingleUnpacker(typ reflect.Type, ilsb uint64, width uint8) unpacker {
-	firstByte := ilsb / 8
-	lsb := uint8(ilsb % 8)
-	switch {
-	case lsb+width <= 8:
-		shift1 := 8 - (lsb + width)
-		shift2 := 8 - width
-		return func(b []byte, field reflect.Value) {
-			field.SetUint(uint64((b[firstByte] << shift1) >> shift2))
+// unpack unpacks the value in buf into v. It assumes that v
+// is addressable and is described by l.
+func unpack(buf []byte, l layout, v reflect.Value) {
+	// TODO(joshlf): Is it safe to make any function
+	// calls after getting the address like this?
+	// Could there be an issue if a function call
+	// overflows the stack, causes a new stack to
+	// be allocated, but addr isn't recognized as
+	// a pointer, so it's not adjusted? This would
+	// only happen if v were stack-allocated, which
+	// would at the very least require the escape
+	// analysis to detect that it won't escape, which
+	// seems exceedingly unlikely, but maybe...?
+	addr := uintptr(v.UnsafeAddr())
+	for _, field := range l {
+		if field.kind == reflect.Bool {
+			*(*bool)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) =
+				buf[field.bufByteOffset]&(byte(1)<<uint8(field.bufLSB%8)) > 0
+		} else if field.signed {
+			var val int64
+			switch field.bytesSpanned {
+			case 1:
+				shift1 := 64 - (field.bufLSB + field.bits)
+				shift2 := 64 - field.bits
+				val = (int64(buf[field.bufByteOffset]) << shift1) >> shift2
+			case 2:
+				shift1 := 64 - (field.bufLSB + field.bits)
+				shift2 := 64 - field.bits
+				val = (int64(*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset]))) << shift1) >> shift2
+			case 3:
+				shift1 := 64 - ((field.bufLSB + field.bits) - 16)
+				shift2 := (shift1 + field.bufLSB) - 16
+				i := int64(*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset]))) >> field.bufLSB
+				val = i | ((int64(buf[field.bufByteOffset+2]) << shift1) >> shift2)
+			case 4:
+				shift1 := 64 - (field.bufLSB + field.bits)
+				shift2 := 64 - field.bits
+				val = (int64(*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset]))) << shift1) >> shift2
+			case 5:
+				shift1 := 64 - ((field.bufLSB + field.bits) - 32)
+				shift2 := (shift1 + field.bufLSB) - 32
+				i := int64(*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset]))) >> field.bufLSB
+				val = i | ((int64(buf[field.bufByteOffset+4]) << shift1) >> shift2)
+			case 6:
+				shift1 := 64 - ((field.bufLSB + field.bits) - 32)
+				shift2 := (shift1 + field.bufLSB) - 32
+				i := int64(*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset]))) >> field.bufLSB
+				val = i | ((int64(*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4]))) << shift1) >> shift2)
+			case 7:
+				shift1 := 32 - field.bufLSB
+				shift2 := 64 - ((field.bufLSB + field.bits) - 48)
+				shift3 := (shift2 + field.bufLSB) - 48
+				i := int64(*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) >> field.bufLSB)
+				i |= int64(*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4]))) >> shift1
+				val = i | (int64(buf[field.bufByteOffset+6])<<shift2)>>shift3
+			case 8:
+				shift1 := 64 - (field.bufLSB + field.bits)
+				shift2 := 64 - field.bits
+				val = (*(*int64)(unsafe.Pointer(&buf[field.bufByteOffset])) << shift1) >> shift2
+			case 9:
+				shift1 := 128 - (field.bufLSB + field.bits)
+				shift2 := (shift1 + field.bufLSB) - 64
+				i := int64(*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) >> field.bufLSB)
+				val = i | ((int64(buf[field.bufByteOffset+8]) << shift1) >> shift2)
+			default:
+				panic("unreachable")
+			}
+			switch field.kind {
+			case reflect.Int8:
+				*(*int8)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) = int8(val)
+			case reflect.Int16:
+				*(*int16)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) = int16(val)
+			case reflect.Int32:
+				*(*int32)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) = int32(val)
+			case reflect.Int64:
+				*(*int64)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) = int64(val)
+			}
+		} else {
+			var val uint64
+			switch field.bytesSpanned {
+			case 1:
+				shift1 := 8 - (field.bufLSB + field.bits)
+				shift2 := 8 - field.bits
+				val = uint64((buf[field.bufByteOffset] << shift1) >> shift2)
+			case 2:
+				shift1 := 16 - (field.bufLSB + field.bits)
+				shift2 := 16 - field.bits
+				val = uint64((*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset])) << shift1) >> shift2)
+			case 3:
+				shift1 := 64 - ((field.bufLSB + field.bits) - 16)
+				shift2 := (shift1 + field.bufLSB) - 16
+				u := uint64(*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset]))) >> field.bufLSB
+				val = u | ((uint64(buf[field.bufByteOffset+2]) << shift1) >> shift2)
+			case 4:
+				shift1 := 32 - (field.bufLSB + field.bits)
+				shift2 := 32 - field.bits
+				val = uint64((*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) << shift1) >> shift2)
+			case 5:
+				shift1 := 64 - ((field.bufLSB + field.bits) - 32)
+				shift2 := (shift1 + field.bufLSB) - 32
+				u := uint64(*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset]))) >> field.bufLSB
+				val = u | ((uint64(buf[field.bufByteOffset+4]) << shift1) >> shift2)
+			case 6:
+				shift1 := 64 - ((field.bufLSB + field.bits) - 32)
+				shift2 := (shift1 + field.bufLSB) - 32
+				u := uint64(*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset]))) >> field.bufLSB
+				val = u | ((uint64(*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4]))) << shift1) >> shift2)
+			case 7:
+				shift1 := 32 - field.bufLSB
+				shift2 := 64 - ((field.bufLSB + field.bits) - 48)
+				shift3 := (shift2 + field.bufLSB) - 48
+				u := uint64(*(*uint32)(unsafe.Pointer(&buf[field.bufByteOffset])) >> field.bufLSB)
+				u |= uint64(*(*uint16)(unsafe.Pointer(&buf[field.bufByteOffset+4]))) >> shift1
+				val = u | (uint64(buf[field.bufByteOffset+6])<<shift2)>>shift3
+			case 8:
+				shift1 := 64 - (field.bufLSB + field.bits)
+				shift2 := 64 - field.bits
+				val = (*(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) << shift1) >> shift2
+			case 9:
+				shift1 := 128 - (field.bufLSB + field.bits)
+				shift2 := (shift1 + field.bufLSB) - 64
+				u := *(*uint64)(unsafe.Pointer(&buf[field.bufByteOffset])) >> field.bufLSB
+				val = u | ((uint64(buf[field.bufByteOffset+8]) << shift1) >> shift2)
+			default:
+				panic("unreachable")
+			}
+			switch field.kind {
+			case reflect.Uint8:
+				*(*uint8)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) = uint8(val)
+			case reflect.Uint16:
+				*(*uint16)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) = uint16(val)
+			case reflect.Uint32:
+				*(*uint32)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) = uint32(val)
+			case reflect.Uint64:
+				*(*uint64)(unsafe.Pointer(addr + uintptr(field.valByteOffset))) = uint64(val)
+			}
 		}
-	case lsb+width <= 16:
-		shift1 := 16 - (lsb + width)
-		shift2 := 16 - width
-		return func(b []byte, field reflect.Value) {
-			field.SetUint(uint64((*(*uint16)(unsafe.Pointer(&b[firstByte])) << shift1) >> shift2))
-		}
-	case lsb+width <= 24:
-		shift1 := 64 - ((lsb + width) - 16)
-		shift2 := (shift1 + lsb) - 16
-		return func(b []byte, field reflect.Value) {
-			u := uint64(*(*uint16)(unsafe.Pointer(&b[firstByte]))) >> lsb
-			field.SetUint(u | ((uint64(b[firstByte+2]) << shift1) >> shift2))
-		}
-	case lsb+width <= 32:
-		shift1 := 32 - (lsb + width)
-		shift2 := 32 - width
-		return func(b []byte, field reflect.Value) {
-			field.SetUint(uint64((*(*uint32)(unsafe.Pointer(&b[firstByte])) << shift1) >> shift2))
-		}
-
-	case lsb+width <= 40:
-		shift1 := 64 - ((lsb + width) - 32)
-		shift2 := (shift1 + lsb) - 32
-		return func(b []byte, field reflect.Value) {
-			u := uint64(*(*uint32)(unsafe.Pointer(&b[firstByte]))) >> lsb
-			field.SetUint(u | ((uint64(b[firstByte+4]) << shift1) >> shift2))
-		}
-	case lsb+width <= 48:
-		shift1 := 64 - ((lsb + width) - 32)
-		shift2 := (shift1 + lsb) - 32
-		return func(b []byte, field reflect.Value) {
-			u := uint64(*(*uint32)(unsafe.Pointer(&b[firstByte]))) >> lsb
-			field.SetUint(u | ((uint64(*(*uint16)(unsafe.Pointer(&b[firstByte+4]))) << shift1) >> shift2))
-		}
-	case lsb+width <= 56:
-		shift1 := 32 - lsb
-		shift2 := 64 - ((lsb + width) - 48)
-		shift3 := (shift2 + lsb) - 48
-		return func(b []byte, field reflect.Value) {
-			u := uint64(*(*uint32)(unsafe.Pointer(&b[firstByte])) >> lsb)
-			u |= uint64(*(*uint16)(unsafe.Pointer(&b[firstByte+4]))) >> shift1
-			field.SetUint(u | (uint64(b[firstByte+6])<<shift2)>>shift3)
-		}
-	case lsb+width <= 64:
-		shift1 := 64 - (lsb + width)
-		shift2 := 64 - width
-		return func(b []byte, field reflect.Value) {
-			field.SetUint((*(*uint64)(unsafe.Pointer(&b[firstByte])) << shift1) >> shift2)
-		}
-	default:
-		// Assume lsb+width <= 72
-		shift1 := 128 - (lsb + width)
-		shift2 := (shift1 + lsb) - 64
-		return func(b []byte, field reflect.Value) {
-			u := *(*uint64)(unsafe.Pointer(&b[firstByte])) >> lsb
-			field.SetUint(u | ((uint64(b[firstByte+8]) << shift1) >> shift2))
-		}
-	}
-}
-
-func makeSignedSingleUnpacker(typ reflect.Type, ilsb uint64, width uint8) unpacker {
-	firstByte := ilsb / 8
-	lsb := uint8(ilsb % 8)
-	switch {
-	case lsb+width <= 8:
-		shift1 := 64 - (lsb + width)
-		shift2 := 64 - width
-		return func(b []byte, field reflect.Value) {
-			field.SetInt((int64(b[firstByte]) << shift1) >> shift2)
-		}
-	case lsb+width <= 16:
-		shift1 := 64 - (lsb + width)
-		shift2 := 64 - width
-		return func(b []byte, field reflect.Value) {
-			field.SetInt((int64(*(*uint16)(unsafe.Pointer(&b[firstByte]))) << shift1) >> shift2)
-		}
-	case lsb+width <= 24:
-		shift1 := 64 - ((lsb + width) - 16)
-		shift2 := (shift1 + lsb) - 16
-		return func(b []byte, field reflect.Value) {
-			i := int64(*(*uint16)(unsafe.Pointer(&b[firstByte]))) >> lsb
-			field.SetInt(i | ((int64(b[firstByte+2]) << shift1) >> shift2))
-		}
-	case lsb+width <= 32:
-		shift1 := 64 - (lsb + width)
-		shift2 := 64 - width
-		return func(b []byte, field reflect.Value) {
-			field.SetInt((int64(*(*uint32)(unsafe.Pointer(&b[firstByte]))) << shift1) >> shift2)
-		}
-
-	case lsb+width <= 40:
-		shift1 := 64 - ((lsb + width) - 32)
-		shift2 := (shift1 + lsb) - 32
-		return func(b []byte, field reflect.Value) {
-			i := int64(*(*uint32)(unsafe.Pointer(&b[firstByte]))) >> lsb
-			field.SetInt(i | ((int64(b[firstByte+4]) << shift1) >> shift2))
-		}
-	case lsb+width <= 48:
-		shift1 := 64 - ((lsb + width) - 32)
-		shift2 := (shift1 + lsb) - 32
-		return func(b []byte, field reflect.Value) {
-			i := int64(*(*uint32)(unsafe.Pointer(&b[firstByte]))) >> lsb
-			field.SetInt(i | ((int64(*(*uint16)(unsafe.Pointer(&b[firstByte+4]))) << shift1) >> shift2))
-		}
-	case lsb+width <= 56:
-		shift1 := 32 - lsb
-		shift2 := 64 - ((lsb + width) - 48)
-		shift3 := (shift2 + lsb) - 48
-		return func(b []byte, field reflect.Value) {
-			i := int64(*(*uint32)(unsafe.Pointer(&b[firstByte])) >> lsb)
-			i |= int64(*(*uint16)(unsafe.Pointer(&b[firstByte+4]))) >> shift1
-			field.SetInt(i | (int64(b[firstByte+6])<<shift2)>>shift3)
-		}
-	case lsb+width <= 64:
-		shift1 := 64 - (lsb + width)
-		shift2 := 64 - width
-		return func(b []byte, field reflect.Value) {
-			field.SetInt((*(*int64)(unsafe.Pointer(&b[firstByte])) << shift1) >> shift2)
-		}
-	default:
-		// Assume lsb+width <= 72
-		shift1 := 128 - (lsb + width)
-		shift2 := (shift1 + lsb) - 64
-		return func(b []byte, field reflect.Value) {
-			i := int64(*(*uint64)(unsafe.Pointer(&b[firstByte])) >> lsb)
-			field.SetInt(i | ((int64(b[firstByte+8]) << shift1) >> shift2))
-		}
-	}
-}
-
-func makeBoolSinglePacker(lsb uint64) packer {
-	firstByte := lsb / 8
-	tru := byte(1) << uint8(lsb%8)
-	return func(b []byte, field reflect.Value) {
-		if field.Bool() {
-			b[firstByte] |= tru
-		}
-	}
-}
-
-func makeBoolSingleUnpacker(lsb uint64) unpacker {
-	firstByte := lsb / 8
-	tru := byte(1) << uint8(lsb%8)
-	return func(b []byte, field reflect.Value) {
-		field.SetBool(b[firstByte]&tru > 0)
 	}
 }
