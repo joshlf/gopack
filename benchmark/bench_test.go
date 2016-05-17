@@ -312,3 +312,143 @@ func BenchmarkUnpackUint8_16Fields(b *testing.B) {
 		gopack.Unpack(bytes, &val)
 	}
 }
+
+func BenchmarkPackLarge(b *testing.B) {
+	type t1 struct {
+		F1, F2, F3, F4 uint8
+	}
+	type t2 struct {
+		F1, F2, F3, F4 t1
+	}
+	type t3 struct {
+		F1, F2, F3, F4 t2
+	}
+	type t4 struct {
+		F1, F2, F3, F4 t3
+	}
+	type t5 struct {
+		F1, F2, F3, F4 t4
+	}
+	type t6 struct {
+		F1, F2, F3, F4 t5
+	}
+	type t7 struct {
+		F1, F2, F3, F4 t6
+	}
+	type t8 struct {
+		F1, F2, F3, F4 t7
+	}
+
+	intface, bytes := benchmarkUtil(t8{}, 65536)
+	val := intface.(t8)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gopack.Pack(bytes, val)
+	}
+}
+
+func BenchmarkUnpackLarge(b *testing.B) {
+	type t1 struct {
+		F1, F2, F3, F4 uint8
+	}
+	type t2 struct {
+		F1, F2, F3, F4 t1
+	}
+	type t3 struct {
+		F1, F2, F3, F4 t2
+	}
+	type t4 struct {
+		F1, F2, F3, F4 t3
+	}
+	type t5 struct {
+		F1, F2, F3, F4 t4
+	}
+	type t6 struct {
+		F1, F2, F3, F4 t5
+	}
+	type t7 struct {
+		F1, F2, F3, F4 t6
+	}
+	type t8 struct {
+		F1, F2, F3, F4 t7
+	}
+
+	intface, bytes := benchmarkUtil(t8{}, 65536)
+	val := intface.(t8)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gopack.Unpack(bytes, &val)
+	}
+}
+
+func BenchmarkPackHuge(b *testing.B) {
+	type t1 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 uint8
+	}
+	type t2 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t1
+	}
+	type t3 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t2
+	}
+	type t4 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t3
+	}
+	type t5 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t4
+	}
+	type t6 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t5
+	}
+	type t7 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t6
+	}
+	type t8 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t7
+	}
+
+	intface, bytes := benchmarkUtil(t8{}, 16777216)
+	val := intface.(t8)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gopack.Pack(bytes, val)
+	}
+}
+
+func BenchmarkUnpackHuge(b *testing.B) {
+	type t1 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 uint8
+	}
+	type t2 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t1
+	}
+	type t3 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t2
+	}
+	type t4 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t3
+	}
+	type t5 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t4
+	}
+	type t6 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t5
+	}
+	type t7 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t6
+	}
+	type t8 struct {
+		F1, F2, F3, F4, F5, F6, F7, F8 t7
+	}
+
+	intface, bytes := benchmarkUtil(t8{}, 16777216)
+	val := intface.(t8)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gopack.Unpack(bytes, &val)
+	}
+}
